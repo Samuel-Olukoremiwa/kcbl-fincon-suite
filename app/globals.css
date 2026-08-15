@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper text-ink antialiased;
+  }
+
+  /* Visible keyboard focus everywhere — quality floor, not optional. */
+  :focus-visible {
+    outline: 2px solid theme("colors.navy.DEFAULT");
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-navy px-4 py-2.5
+           text-sm font-medium text-white transition-colors
+           hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+
+  .field-input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm
+           text-ink placeholder:text-slate-400
+           focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy;
+  }
+
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+  }
+
+  .section-title { @apply text-xs font-semibold uppercase tracking-[0.16em] text-navy; }
+  .btn-secondary { @apply inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-slate-50; }
+  .field-error { @apply mt-1 text-xs text-red-600; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

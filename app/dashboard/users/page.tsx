@@ -1,0 +1,138 @@
+import { redirect } from "next/navigation";
+import { UserPlus } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import CreateUserForm from "./create-user-form";
+
+const ROLE_BADGE: Record<string, string> = {
+  "Super Admin": "bg-amber-50 text-amber-600",
+  Maker: "bg-navy-50 text-navy",
+  Checker: "bg-navy-50 text-navy",
+  Client: "bg-slate-100 text-slate-600",
+};
+
+export default async function UsersPage() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("roles(rolename)")
+    .eq("authuserid", user!.id)
+    .single();
+
+  const roleName = (profile?.roles as unknown as { rolename: string } | null)?.rolename;
+
+  // Page-level gate. The real enforcement is still the RLS policies and
+  // the API route's own check (see app/api/users/create/route.ts) — this
+  // redirect just avoids showing the form to someone who'd be blocked by
+  // the database anyway.
+  if (roleName !== "Super Admin") {
+    redirect("/dashboard");
+  }
+
+  const { data: users } = await supabase
+    .from("users")
+    .select("userid, fullname, email, usertype, status, roles(rolename)")
+    .order("userid");
+
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
+          <UserPlus size={20} strokeWidth={1.75} />
+        </div>
+        <div>
+          <h1 className="text-xl font-semibold text-ink">User Management</h1>
+          <p className="text-sm text-slate-500">
+            Create Staff and Client accounts, and assign their roles.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[380px_1fr]">
+        <div className="card p-6">
+          <h2 className="mb-4 text-sm font-semibold text-ink">Create a new user</h2>
+          <CreateUserForm />
+        </div>
+
+        <div className="card overflow-hidden">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3 font-medium">User</th>
+                <th className="px-4 py-3 font-medium">Email</th>
+                <th className="px-4 py-3 font-medium">Type</th>
+                <th className="px-4 py-3 font-medium">Role</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {users?.map((u) => {
+                const roleLabel = (u.roles as unknown as { rolename: string } | null)?.rolename ?? "—";
+                const initials = u.fullname
+                  .split(" ")
+                  .map((s: string) => s[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase();
+
+                return (
+                  <tr key={u.userid} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-50 text-xs font-semibold text-navy">
+                          {initials}
+                        </div>
+                        <div>
+                          <div className="font-medium text-ink">{u.fullname}</div>
+                          <div className="text-xs text-slate-400">{u.userid}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{u.email}</td>
+                    <td className="px-4 py-3 text-slate-600">{u.usertype}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={
+                          "rounded-full px-2.5 py-0.5 text-xs font-medium " +
+                          (ROLE_BADGE[roleLabel] ?? "bg-slate-100 text-slate-600")
+                        }
+                      >
+                        {roleLabel}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={
+                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium " +
+                          (u.status === "Active"
+                            ? "bg-green-50 text-green-700"
+                            : "bg-slate-100 text-slate-500")
+                        }
+                      >
+                        <span
+                          className={
+                            "h-1.5 w-1.5 rounded-full " +
+                            (u.status === "Active" ? "bg-green-500" : "bg-slate-400")
+                          }
+                        />
+                        {u.status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!users?.length && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                    No users yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
