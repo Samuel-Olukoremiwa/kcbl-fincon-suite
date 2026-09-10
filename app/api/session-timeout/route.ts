@@ -1,0 +1,2 @@
+import {NextResponse} from "next/server";import {createAdminClient} from "@/lib/supabase/admin";import {getViewer} from "@/lib/viewer";
+export async function GET(){await getViewer();const {data}=await createAdminClient().from("systemsettings").select("settingvalue").eq("settingkey","session_timeout_minutes").maybeSingle();return NextResponse.json({minutes:Number(data?.settingvalue??5)})}

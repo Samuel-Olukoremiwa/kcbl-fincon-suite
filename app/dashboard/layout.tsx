@@ -1,6 +1,8 @@
 import Sidebar from "./sidebar";
 import SignOutButton from "./sign-out-button";
 import { getViewer } from "@/lib/viewer";
+import { createClient } from "@/lib/supabase/server";
+import SessionTimeout from "./session-timeout";
 
 export default async function DashboardLayout({
   children,
@@ -8,6 +10,14 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const viewer = await getViewer();
+  const supabase = createClient();
+  const { data: setting } = await supabase
+    .from("systemsettings")
+    .select("settingvalue")
+    .eq("settingkey", "session_timeout_minutes")
+    .maybeSingle();
+  const timeoutMinutes = Number(setting?.settingvalue ?? 5);
+
   const initials = viewer.fullName
     .split(" ")
     .map((s: string) => s[0])
@@ -17,7 +27,13 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-paper">
-      <Sidebar roleName={viewer.roleName} userType={viewer.userType} />
+      <SessionTimeout minutes={timeoutMinutes} />
+      <Sidebar
+        roleName={viewer.roleName}
+        userType={viewer.userType}
+        department={viewer.department}
+        accessLevel={viewer.accessLevel}
+      />
 
       <div className="ml-64 min-w-0 flex-1">
         <header className="flex items-center justify-between border-b border-slate-200 bg-white px-8 py-3.5">

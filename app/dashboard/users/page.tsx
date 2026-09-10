@@ -2,12 +2,14 @@ import { redirect } from "next/navigation";
 import { UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import CreateUserForm from "./create-user-form";
+import EditUserAccess from "./edit-user-access";
 
 const ROLE_BADGE: Record<string, string> = {
-  "Super Admin": "bg-amber-50 text-amber-600",
-  Maker: "bg-navy-50 text-navy",
-  Checker: "bg-navy-50 text-navy",
+  "Super User": "bg-amber-50 text-amber-600",
+  Initiator: "bg-navy-50 text-navy",
+  Authorizer: "bg-navy-50 text-navy",
   Client: "bg-slate-100 text-slate-600",
+  Viewer: "bg-slate-100 text-slate-600",
 };
 
 export default async function UsersPage() {
@@ -26,14 +28,17 @@ export default async function UsersPage() {
   // the API route's own check (see app/api/users/create/route.ts) — this
   // redirect just avoids showing the form to someone who'd be blocked by
   // the database anyway.
-  if (roleName !== "Super Admin") {
+  if (roleName !== "Super User") {
     redirect("/dashboard");
   }
 
-  const { data: users } = await supabase
-    .from("users")
-    .select("userid, fullname, email, usertype, status, roles(rolename)")
-    .order("userid");
+  const [{ data: users }, { data: roles }] = await Promise.all([
+    supabase
+      .from("users")
+      .select("userid, fullname, email, usertype, status, department, accesslevel, roleid, roles(rolename)")
+      .order("userid"),
+    supabase.from("roles").select("roleid, rolename").order("rolename"),
+  ]);
 
   return (
     <div>
@@ -55,7 +60,7 @@ export default async function UsersPage() {
           <CreateUserForm />
         </div>
 
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
@@ -64,6 +69,7 @@ export default async function UsersPage() {
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -119,12 +125,22 @@ export default async function UsersPage() {
                         {u.status}
                       </span>
                     </td>
+                    <td className="px-4 py-3">
+                      <EditUserAccess
+                        userid={u.userid}
+                        currentRoleId={u.roleid}
+                        currentRoleName={roleLabel}
+                        currentDepartment={u.department}
+                        currentAccessLevel={u.accesslevel}
+                        roleOptions={roles ?? []}
+                      />
+                    </td>
                   </tr>
                 );
               })}
               {!users?.length && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
                     No users yet.
                   </td>
                 </tr>

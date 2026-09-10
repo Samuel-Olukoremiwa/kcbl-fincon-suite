@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getViewer } from "@/lib/viewer";
+export async function POST(request:Request){const viewer=await getViewer();if(viewer.roleName!=="Super User")return NextResponse.json({error:"Only a Super User can request a session timeout change."},{status:403});const {minutes}=await request.json();if(!Number.isInteger(minutes)||minutes<1||minutes>120)return NextResponse.json({error:"Enter a whole number between 1 and 120."},{status:400});const {error}=await createAdminClient().from("sessiontimeoutrequests").insert({requestedminutes:minutes,requestedbyuserid:viewer.userId});return error?NextResponse.json({error:error.message},{status:500}):NextResponse.json({ok:true},{status:201})}
+export async function GET(){const viewer=await getViewer();if(!["Super User","Internal Control"].includes(viewer.roleName))return NextResponse.json({error:"Not permitted."},{status:403});const {data,error}=await createAdminClient().from("sessiontimeoutrequests").select("requestid,requestedminutes,requestedbyuserid,status,requestedat").eq("status","Pending").order("requestedat",{ascending:false});return error?NextResponse.json({error:error.message},{status:500}):NextResponse.json(data)}

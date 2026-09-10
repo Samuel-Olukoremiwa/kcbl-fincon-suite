@@ -14,7 +14,7 @@ export default async function DashboardPage() {
     supabase.from("cashinflowreceivables").select("transactionid, amount, approvalstatus, transactiondate").order("transactiondate", { ascending: false }),
     supabase.from("cashoutflowexpenditure").select("transactionid, amount, approvalstatus, transactiondate").order("transactiondate", { ascending: false }),
   ]);
-  const isSuperAdmin = viewer.roleName === "Super Admin";
+  const isSuperUser = viewer.roleName === "Super User";
   const firstName = viewer.fullName.split(" ")[0];
   const totalBudget = (projects ?? []).reduce((sum, project) => sum + Number(project.estimatedvalue), 0);
   const approvedInflow = (inflows ?? []).filter(x => x.approvalstatus === "Approved").reduce((sum, x) => sum + Number(x.amount), 0);
@@ -54,7 +54,7 @@ export default async function DashboardPage() {
           icon={Users}
           title="User Management"
           description="Create and manage Staff and Client accounts."
-          enabled={isSuperAdmin}
+          enabled={isSuperUser}
         />
         <DashboardCard
           href="/dashboard/clients"

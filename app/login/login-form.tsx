@@ -12,6 +12,7 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,6 +29,16 @@ export default function LoginForm() {
 
     router.push("/dashboard");
     router.refresh();
+  }
+
+  async function forgotPassword() {
+    setError(null); setResetNotice(null);
+    if (!email) return setError("Enter your email address first, then select Forgot password.");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/login/reset-password` });
+    setLoading(false);
+    if (error) return setError(error.message);
+    setResetNotice("If this email belongs to an active account, a password-reset link has been sent.");
   }
 
   return (
@@ -64,11 +75,16 @@ export default function LoginForm() {
         />
       </div>
 
+      <button type="button" onClick={forgotPassword} disabled={loading} className="mb-5 text-sm font-medium text-navy hover:underline">
+        Forgot password?
+      </button>
+
       {error && (
         <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       )}
+      {resetNotice && <p role="status" className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{resetNotice}</p>}
 
       <button type="submit" disabled={loading} className="btn-primary w-full">
         {loading ? "Signing in…" : "Sign in"}
