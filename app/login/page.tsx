@@ -1,5 +1,6 @@
 import Image from "next/image";
 import LoginForm from "./login-form";
+import Link from "next/link";
 
 export default function LoginPage() {
   return (
@@ -32,6 +33,7 @@ export default function LoginPage() {
             <LoginForm />
           </div>
         </div>
+        <nav aria-label="Legal information" className="mt-5 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-white/60"><Link href="/privacy-policy" className="hover:text-white">Privacy</Link><Link href="/terms" className="hover:text-white">Terms</Link><Link href="/cookie-policy" className="hover:text-white">Cookies</Link><Link href="/refund-policy" className="hover:text-white">Refund policy</Link></nav>
       </div>
     </main>
   );

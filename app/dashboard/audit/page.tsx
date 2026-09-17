@@ -1,2 +1,173 @@
-import {Landmark} from "lucide-react";import {createClient} from "@/lib/supabase/server";import {requirePageAccess} from "@/lib/viewer";import {date} from "@/lib/client-utils";
-export default async function AuditPage(){await requirePageAccess("audit");const s=createClient();const{data:logs}=await s.from("makercheckerauditlog").select("logid,transactiontype,transactionid,actiontype,actionbyuserid,actiondate,actiontime,comments").order("actiondate",{ascending:false}).order("actiontime",{ascending:false});return <div><header className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white"><Landmark size={20}/></div><div><h1 className="text-xl font-semibold">Maker-Checker Audit Trail</h1><p className="text-sm text-slate-500">Append-only record of transaction actions.</p></div></header><div className="card mt-8 overflow-hidden"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Date & time</th><th className="px-4 py-3">Transaction</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">By</th><th className="px-4 py-3">Comments</th></tr></thead><tbody className="divide-y divide-slate-100">{logs?.map(l=><tr key={l.logid}><td className="px-4 py-3">{date(l.actiondate)}<span className="block text-xs text-slate-400">{l.actiontime}</span></td><td className="px-4 py-3"><b>{l.transactionid}</b><span className="block text-xs text-slate-400">{l.transactiontype}</span></td><td className="px-4 py-3"><span className="rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">{l.actiontype}</span></td><td className="px-4 py-3">{l.actionbyuserid}</td><td className="px-4 py-3 text-slate-500">{l.comments??"—"}</td></tr>)}{!logs?.length&&<tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No audit records yet.</td></tr>}</tbody></table></div></div>}
+import { Landmark } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { requirePageAccess } from "@/lib/viewer";
+import AuditWorkspace from "./audit-workspace";
+
+export default async function AuditPage() {
+  await requirePageAccess("audit");
+
+  const supabase = createClient();
+
+  const [
+    { data: inflows },
+    { data: outflows },
+    { data: logs },
+    { data: users },
+    { data: projects },
+    { data: progressReports },
+  ] = await Promise.all([
+    supabase
+      .from("cashinflowreceivables")
+      .select(
+        "transactionid,projectid,amount,makeruserid,checkeruserid,approvalstatus,approvaldate"
+      )
+      .order("transactionid", { ascending: false }),
+
+    supabase
+      .from("cashoutflowexpenditure")
+      .select(
+        "transactionid,projectid,amount,makeruserid,checkeruserid,approvalstatus,approvaldate"
+      )
+      .order("transactionid", { ascending: false }),
+
+    supabase
+      .from("makercheckerauditlog")
+      .select(
+        "logid,transactiontype,transactionid,actiontype,actionbyuserid,actiondate,actiontime,comments"
+      )
+      .order("actiondate", { ascending: false })
+      .order("actiontime", { ascending: false }),
+
+    supabase.from("users").select("userid,fullname"),
+
+    supabase.from("projects").select("projectid,projecttitle"),
+
+    supabase
+      .from("projectreports")
+      .select(
+        "reportid,projectid,reportmonth,filename,reviewstatus,progresspct,uploadedat,uploadedbyuserid,supervisorreviewedat,supervisorreviewedbyuserid,authorizedat,authorizedbyuserid,supervisorcomments"
+      )
+      .order("uploadedat", { ascending: false }),
+  ]);
+
+  const userNames = new Map(
+    (users ?? []).map((user) => [user.userid, user.fullname])
+  );
+
+  const projectNames = new Map(
+    (projects ?? []).map((project) => [
+      project.projectid,
+      project.projecttitle,
+    ])
+  );
+
+  const logsFor = (transactionId: string) =>
+    (logs ?? []).filter((log) => log.transactionid === transactionId);
+
+  const transactions = [
+    ...(inflows ?? []).map((transaction) => ({
+      ...transaction,
+      direction: "Inflow",
+    })),
+    ...(outflows ?? []).map((transaction) => ({
+      ...transaction,
+      direction: "Outflow",
+    })),
+  ].map((transaction) => {
+    const entries = logsFor(transaction.transactionid);
+
+    const initiated = entries.find(
+      (entry) => entry.actiontype === "Created"
+    );
+
+    const authorized = entries.find(
+      (entry) =>
+        entry.actiontype === "Approved" ||
+        entry.actiontype === "Rejected"
+    );
+
+    return {
+      id: transaction.transactionid,
+      direction: transaction.direction,
+      amount: transaction.amount,
+      projectName: transaction.projectid
+        ? projectNames.get(transaction.projectid)
+        : null,
+      initiatorName:
+        userNames.get(transaction.makeruserid) ??
+        transaction.makeruserid,
+      initiatedDate: initiated?.actiondate ?? null,
+      initiatedTime: initiated?.actiontime ?? null,
+      authorizerName: transaction.checkeruserid
+        ? userNames.get(transaction.checkeruserid) ??
+          transaction.checkeruserid
+        : null,
+      authorizedDate: authorized?.actiondate ?? transaction.approvaldate,
+      authorizedTime: authorized?.actiontime ?? null,
+      status: transaction.approvalstatus,
+    };
+  });
+
+  const records = (logs ?? [])
+    .filter((log) =>
+      ["Client", "Project", "Supplier", "Subcontractor"].includes(
+        log.transactiontype
+      )
+    )
+    .map((log) => ({
+      ...log,
+      id: log.transactionid,
+      type: log.transactiontype,
+      userName:
+        userNames.get(log.actionbyuserid) ?? log.actionbyuserid,
+      date: log.actiondate,
+      time: log.actiontime,
+    }));
+
+  const reports = (progressReports ?? []).map((report) => ({
+    id: report.reportid,
+    projectName: projectNames.get(report.projectid) ?? report.projectid,
+    filename: report.filename,
+    month: report.reportmonth,
+    status: report.reviewstatus,
+    progress: report.progresspct,
+    submittedBy:
+      userNames.get(report.uploadedbyuserid) ??
+      report.uploadedbyuserid,
+    submittedAt: report.uploadedat,
+    reviewedBy: report.supervisorreviewedbyuserid
+      ? userNames.get(report.supervisorreviewedbyuserid) ??
+        report.supervisorreviewedbyuserid
+      : null,
+    reviewedAt: report.supervisorreviewedat,
+    authorizedBy: report.authorizedbyuserid
+      ? userNames.get(report.authorizedbyuserid) ??
+        report.authorizedbyuserid
+      : null,
+    authorizedAt: report.authorizedat,
+    comments: report.supervisorcomments,
+  }));
+
+  return (
+    <div>
+      <header className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
+          <Landmark size={20} />
+        </div>
+
+        <div>
+          <h1 className="text-xl font-semibold">Audit Trail</h1>
+          <p className="text-sm text-slate-500">
+            Transaction, record, and Progress Report history.
+          </p>
+        </div>
+      </header>
+
+      <AuditWorkspace
+        transactions={transactions}
+        records={records}
+        progressReports={reports}
+      />
+    </div>
+  );
+}

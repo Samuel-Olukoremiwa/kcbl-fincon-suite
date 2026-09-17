@@ -19,11 +19,12 @@ export async function getViewer(): Promise<Viewer> {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("userid, fullname, usertype, department, accesslevel, roles(rolename)")
+    .select("userid, fullname, usertype, department, accesslevel, status, roles(rolename)")
     .eq("authuserid", user.id)
     .single();
 
   if (!profile) redirect("/login?error=profile");
+  if (profile.status && profile.status !== "Active") redirect("/login?error=pending-approval");
 
   const role = (profile.roles as unknown as { rolename: string } | null)?.rolename ?? "Unknown";
 

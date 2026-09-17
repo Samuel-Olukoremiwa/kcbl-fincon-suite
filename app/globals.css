@@ -5,7 +5,13 @@
 @layer base {
   body {
     @apply bg-paper text-ink antialiased;
+    -webkit-tap-highlight-color: rgba(10, 44, 73, 0.18);
   }
+
+  button, a, input, select, summary { touch-action: manipulation; }
+
+  table { font-variant-numeric: tabular-nums; }
+  .skip-link { @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-navy focus:shadow; }
 
   /* Visible keyboard focus everywhere — quality floor, not optional. */
   :focus-visible {
@@ -34,6 +40,8 @@
   .card {
     @apply rounded-lg border border-slate-200 bg-white shadow-sm;
   }
+
+  .table-number { @apply whitespace-nowrap; font-variant-numeric: tabular-nums; }
 
   .section-title { @apply text-xs font-semibold uppercase tracking-[0.16em] text-navy; }
   .btn-secondary { @apply inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-slate-50; }

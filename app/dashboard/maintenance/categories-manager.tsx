@@ -104,3 +104,5 @@ export default function CategoriesManager({ canManage }: { canManage: boolean })
     </div>
   );
 }
+
+

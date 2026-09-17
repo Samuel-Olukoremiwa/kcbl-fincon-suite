@@ -19,7 +19,8 @@ project (schema, RLS policies, and seed data already built and tested).
   uses a mutually exclusive Supplier/Subcontractor selector.
 - **Approval queue and audit trail**: Checker/Super Admin approval/rejection
   actions, self-approval prevention, rejection reasons, and append-only logs.
-- **Client Portal**: read-only account, project, inflow and document view.
+- **Client Portal**: read-only account, project, inflow, document and private monthly-report view.
+- **Monthly project reports**: MD Office upload of one PDF per project/month (100 MB maximum), private client downloads, and Resend reminders/notifications.
 
 ## Setup
 
@@ -61,10 +62,14 @@ project (schema, RLS policies, and seed data already built and tested).
 
 1. Push this project to a GitHub repo.
 2. Import it in Vercel.
-3. Add the same three environment variables from `.env.local` in
+3. Add the Supabase variables plus `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, and
+   `CRON_SECRET` from `.env.local` in
    Vercel's Project Settings → Environment Variables (never commit them —
    set them directly in Vercel's dashboard).
-4. Deploy.
+4. In Resend, verify the sender domain used by `RESEND_FROM_EMAIL`.
+5. Deploy. `vercel.json` schedules the secure report job daily at 07:00 UTC
+   (08:00 Africa/Lagos). It sends MD Office reminders three days and one day
+   before month end, and client availability notices on month end.
 
 **Reminder:** Vercel's free Hobby plan is for personal, non-commercial
 use only. This is a commercial system for a business (KCBL), so plan to
@@ -86,8 +91,11 @@ production — Hobby is fine for now, while still building/testing.
 - `middleware.ts` — refreshes the session cookie on every request and
   redirects unauthenticated visitors away from `/dashboard`.
 
-## Confirmed scope not implemented
+## Monthly-report database migration
 
-The requirements explicitly leave Client report downloads (PDF/Word/Text) and
-additional, unspecified test-script modules as open decisions. They are not
-implemented, rather than guessed at.
+Run [supabase/20260917_project_reports.sql](./supabase/20260917_project_reports.sql)
+once in Supabase SQL Editor before using Project Reports. It creates the report
+metadata and notification log, then creates a private `project-reports` bucket
+restricted to PDFs up to 100 MB. The application never exposes a public bucket
+URL; it checks the session and project ownership before issuing a 60-second
+download URL.

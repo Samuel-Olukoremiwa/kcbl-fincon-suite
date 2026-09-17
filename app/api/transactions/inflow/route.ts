@@ -13,7 +13,15 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
+  const today = new Date().toISOString().slice(0, 10);
+  if (!body.date || body.date < today) {
+    return NextResponse.json({ error: "Transaction dates cannot be in the past." }, { status: 400 });
+  }
   const supabase = createClient();
+  if (body.projectid) {
+    const { data: project } = await supabase.from("projects").select("status").eq("projectid", body.projectid).single();
+    if (project?.status === "Pending") return NextResponse.json({ error: "Pending projects do not accept new financial records." }, { status: 400 });
+  }
   const { data: existing } = await supabase.from("cashinflowreceivables").select("transactionid");
   const id = nextPrefixedId((existing ?? []).map((x) => x.transactionid), "INF", 9);
 

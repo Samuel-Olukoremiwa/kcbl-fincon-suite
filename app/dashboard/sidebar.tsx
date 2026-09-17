@@ -4,8 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
-  Menu, X, LayoutDashboard, Users, FileCheck2, Banknote,
-  Building2, Truck, HardHat, Landmark, Settings, ClipboardEdit, Wrench,
+  Menu, X, LayoutDashboard, Users, FileCheck2, Banknote, FileText,
+  Building2, BriefcaseBusiness, Landmark, Settings, ClipboardEdit, Wrench, ContactRound,
 } from "lucide-react";
 import { useState } from "react";
 import { canAccess, type ModuleKey } from "@/lib/access";
@@ -27,20 +27,35 @@ export default function Sidebar({
   };
 
   const allItems: (NavItem & { module: ModuleKey })[] = isClient
-    ? [{ href: "/dashboard/portal", label: "My Project Portal", icon: LayoutDashboard, module: "dashboard" }]
-    : [
-        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
-        { href: "/dashboard/users", label: "User Management", icon: Users, module: "users" },
-        { href: "/dashboard/clients", label: "Clients & KYC", icon: FileCheck2, module: "clients" },
-        { href: "/dashboard/projects", label: "Projects", icon: Building2, module: "projects" },
-        { href: "/dashboard/suppliers", label: "Suppliers", icon: Truck, module: "suppliers" },
-        { href: "/dashboard/subcontractors", label: "Subcontractors", icon: HardHat, module: "subcontractors" },
-        { href: "/dashboard/transactions", label: "Transactions", icon: Banknote, module: "transactions" },
-        { href: "/dashboard/audit", label: "Audit Trail", icon: Landmark, module: "audit" },
-        { href: "/dashboard/maintenance", label: "Master Data", icon: Wrench, module: "maintenance" },
-        { href: "/dashboard/edit-requests", label: "Update Requests", icon: ClipboardEdit, module: "editRequests" },
-        { href: "/dashboard/settings", label: "Security Settings", icon: Settings, module: "settings" },
-      ];
+  ? [
+      {
+        href: "/dashboard/portal",
+        label: "My Project Portal",
+        icon: LayoutDashboard,
+        module: "dashboard",
+      },
+      {
+        href: "/dashboard/reports",
+        label: "Progress Reports",
+        icon: FileText,
+        module: "reports",
+      },
+    ]
+  : [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
+      { href: "/dashboard/users", label: "User Management", icon: Users, module: "users" },
+      { href: "/dashboard/clients", label: "Clients & KYC", icon: FileCheck2, module: "clients" },
+      { href: "/dashboard/projects", label: "Projects", icon: Building2, module: "projects" },
+      { href: "/dashboard/directory", label: "Clients & Projects", icon: ContactRound, module: "projects" },
+      { href: "/dashboard/partners", label: "Suppliers & Subcontractors", icon: BriefcaseBusiness, module: "suppliers" },
+      { href: "/dashboard/transactions", label: "Transactions", icon: Banknote, module: "transactions" },
+      { href: "/dashboard/audit", label: "Audit Trail", icon: Landmark, module: "audit" },
+      { href: "/dashboard/reports", label: "Progress Reports", icon: FileText, module: "reports" },
+      { href: "/dashboard/assignments", label: "Project Assignments", icon: ContactRound, module: "assignments" },
+      { href: "/dashboard/maintenance", label: "Master Data", icon: Wrench, module: "maintenance" },
+      { href: "/dashboard/edit-requests", label: "Update Requests", icon: ClipboardEdit, module: "editRequests" },
+      { href: "/dashboard/settings", label: "Security Settings", icon: Settings, module: "settings" },
+    ];
 
   const items = allItems.filter((item) => canAccess(viewer, item.module));
 

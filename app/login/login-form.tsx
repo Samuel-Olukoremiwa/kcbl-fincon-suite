@@ -19,10 +19,14 @@ export default function LoginForm() {
     setError(null);
     setLoading(true);
 
+    // A timeout can leave an expired local token in browser storage. Clear it
+    // locally before starting a fresh password session.
+    await supabase.auth.signOut({ scope: "local" });
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError("Email or password is incorrect. Check both and try again.");
+      setError(error.message === "Invalid login credentials" ? "Email or password is incorrect. Check both and try again." : error.message);
       setLoading(false);
       return;
     }

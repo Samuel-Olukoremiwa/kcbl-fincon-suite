@@ -134,6 +134,7 @@ export default function DataArchiveTab({ canArchive }: { canArchive: boolean }) 
 
       {records && (
         <div className="mt-6 space-y-6">
+          <button onClick={() => downloadArchive(records, selectedBatch)} className="btn-secondary">Download archived data (CSV)</button>
           <RecordSection title="Clients" rows={records.clients} columns={["clientid", "fullnameorcompanyname", "clienttype"]} />
           <RecordSection title="Projects" rows={records.projects} columns={["projectid", "projecttitle", "estimatedvalue", "status"]} />
           <RecordSection title="Suppliers" rows={records.suppliers} columns={["supplierid", "suppliername", "supplycategory"]} />
@@ -144,6 +145,16 @@ export default function DataArchiveTab({ canArchive }: { canArchive: boolean }) 
       )}
     </div>
   );
+}
+
+function downloadArchive(records: ArchiveRecords, archiveid: number | "") {
+  const rows = Object.entries(records).flatMap(([area, values]) => (values as Record<string, unknown>[]).map(row => ({ area, ...row })));
+  if (!rows.length) return;
+  const headers = [...new Set(rows.flatMap(row => Object.keys(row)))];
+  const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = [headers.join(","), ...rows.map(row => headers.map(header => escape(row[header as keyof typeof row])).join(","))].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a"); link.href = url; link.download = `kcbl-archive-${archiveid}.csv`; link.click(); URL.revokeObjectURL(url);
 }
 
 function RecordSection({ title, rows, columns }: { title: string; rows: any[]; columns: string[] }) {

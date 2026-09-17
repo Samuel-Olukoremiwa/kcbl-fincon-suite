@@ -2,7 +2,7 @@ import type { Viewer } from "@/lib/viewer";
 
 export type ModuleKey =
   | "dashboard" | "users" | "clients" | "projects" | "suppliers"
-  | "subcontractors" | "transactions" | "audit" | "maintenance" | "settings" | "editRequests";
+  | "subcontractors" | "transactions" | "audit" | "maintenance" | "settings" | "editRequests" | "reports" | "assignments";
 
 type Rule = { modules: ModuleKey[]; write: ModuleKey[] };
 
@@ -15,8 +15,8 @@ const departmentMatrix: Record<string, Rule> = {
     write: [],
   },
   "MD Office": {
-    modules: ["clients", "projects", "suppliers", "subcontractors", "audit", "editRequests"],
-    write: ["clients", "projects", "suppliers", "subcontractors", "editRequests"],
+    modules: ["users", "clients", "projects", "suppliers", "subcontractors", "audit", "editRequests", "reports", "assignments"],
+    write: ["clients", "projects", "suppliers", "subcontractors", "editRequests", "reports", "assignments"],
   },
   "Executive Director": { modules: ["dashboard", "audit"], write: [] },
   "Non-Executive Director": { modules: ["dashboard"], write: [] },
@@ -25,22 +25,22 @@ const departmentMatrix: Record<string, Rule> = {
     write: ["suppliers", "subcontractors", "transactions", "editRequests"],
   },
   "Business Development": {
-    modules: ["dashboard", "clients", "projects", "editRequests"],
+    modules: ["users", "clients", "projects", "editRequests"],
     write: ["clients", "projects", "editRequests"],
   },
-  "Operations": { modules: ["projects"], write: [] },
+  "Operations": { modules: ["reports", "assignments"], write: ["reports", "assignments"] },
   "Audit/Internal Control": {
-    modules: ["dashboard", "clients", "projects", "suppliers", "subcontractors", "audit", "editRequests", "settings"],
+    modules: ["clients", "projects", "suppliers", "subcontractors", "audit", "editRequests", "settings"],
     write: [],
   },
 };
 
 const superUserRule: Rule = {
-  modules: ["dashboard", "users", "clients", "projects", "suppliers", "subcontractors", "transactions", "audit", "maintenance", "settings", "editRequests"],
-  write: ["users", "clients", "projects", "suppliers", "subcontractors", "transactions", "maintenance", "settings", "editRequests"],
+  modules: ["dashboard", "users", "clients", "projects", "suppliers", "subcontractors", "transactions", "audit", "maintenance", "settings", "editRequests", "reports", "assignments"],
+  write: ["users", "clients", "projects", "suppliers", "subcontractors", "transactions", "maintenance", "settings", "editRequests", "assignments"],
 };
 
-const clientRule: Rule = { modules: ["dashboard"], write: [] };
+const clientRule: Rule = { modules: ["dashboard", "reports"], write: [] };
 
 export function canAccess(viewer: Viewer, module: ModuleKey, write = false) {
   if (viewer.roleName === "Super User") {
@@ -52,13 +52,29 @@ export function canAccess(viewer: Viewer, module: ModuleKey, write = false) {
     return (write ? r.write : r.modules).includes(module);
   }
 
-  const rule: Rule = (viewer.department ? departmentMatrix[viewer.department] : undefined) ?? { modules: [], write: [] };
+  // Some existing accounts have the matrix label stored as their role rather
+  // than department. Supporting that legacy shape still applies the same
+  // least-privilege scope; an Initiator/Authorizer alone grants nothing.
+  const matrixLabel = viewer.department || viewer.roleName;
+  const rule: Rule = departmentMatrix[matrixLabel] ?? { modules: [], write: [] };
 
   if (!(write ? rule.write : rule.modules).includes(module)) return false;
 
-  // Within a write-enabled department, an Authorizer can approve/reject
-  // but should not submit new records — mirrors your maker-checker rule.
-  if (write && viewer.roleName === "Authorizer") return false;
-
   return true;
+}
+
+// Monthly reports are deliberately narrower than ordinary project access.
+// MD Office is the business owner for upload, report distribution and the
+// month-end reminder workflow. This remains a server-side check.
+export function canManageProjectReports(viewer: Viewer) {
+  return viewer.userType === "Staff" && viewer.department === "MD Office" &&
+    ["Authorizer", "MD Office"].includes(viewer.roleName);
+}
+export function canSubmitProgressReports(viewer: Viewer) {
+  return viewer.userType === "Staff" && viewer.department === "Operations";
+}
+
+export function canCreateClientOrProject(viewer: Viewer) {
+  return viewer.userType === "Staff" && viewer.roleName !== "MD" &&
+    (viewer.roleName === "Super User" || ["Business Development", "MD Office"].includes(viewer.department ?? ""));
 }

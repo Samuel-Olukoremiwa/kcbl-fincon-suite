@@ -2,14 +2,12 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiWriteAccess } from "@/lib/viewer";
 import { nextPrefixedId } from "@/lib/client-utils";
+import { canCreateClientOrProject } from "@/lib/access";
 
 export async function POST(request: Request) {
   const { viewer, forbidden } = await requireApiWriteAccess("clients");
-  if (forbidden || !viewer) {
+  if (forbidden || !viewer || !canCreateClientOrProject(viewer)) {
     return NextResponse.json({ error: "Not authorized to create clients." }, { status: 403 });
-  }
-  if (viewer.roleName === "Authorizer") {
-    return NextResponse.json({ error: "Authorizers cannot create new clients." }, { status: 403 });
   }
 
   const body = await request.json();
@@ -86,6 +84,13 @@ export async function POST(request: Request) {
   if (fail?.error) {
     return NextResponse.json({ clientid, error: `Client created, but a related KYC item failed: ${fail.error.message}` }, { status: 207 });
   }
+
+  await supabase.from("makercheckerauditlog").insert({
+    logid: `LOG${Date.now().toString().slice(-9)}`,
+    transactiontype: "Client", transactionid: clientid, actiontype: "Created",
+    actionbyuserid: viewer.userId, actiondate: new Date().toISOString().slice(0, 10),
+    actiontime: new Date().toTimeString().slice(0, 8), comments: name,
+  });
 
   return NextResponse.json({ clientid });
 }

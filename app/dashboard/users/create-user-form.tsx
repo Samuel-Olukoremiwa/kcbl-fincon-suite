@@ -1,9 +1,234 @@
 "use client";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-const ROLES = ["Super User","Initiator","Authorizer","Client","MD","MD Office","Executive Director","Non-Executive Director","Finance & Admin","Business Development","Operations","Internal Control"];
-const DEPARTMENTS = ["MD","MD Office","Finance & Admin","Business Development","Operations","Audit/Internal Control"];
-export default function CreateUserForm() { const router = useRouter(); const [form,setForm]=useState({fullName:"",email:"",phone:"",role:"Initiator",department:"",accessLevel:"Read & Write",loginEmail:""}); const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[success,setSuccess]=useState<string|null>(null); const set=(key:keyof typeof form,value:string)=>setForm({...form,[key]:value}); const client=form.role==="Client";
-async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError(null);setSuccess(null);try{const res=await fetch("/api/users/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)}),body=await res.json();if(!res.ok)return setError(body.error??"Could not create user.");setSuccess(`${form.fullName} created. Temporary password: ${body.temporaryPassword}. Share it securely; the user receives a password-set email.`);setForm({fullName:"",email:"",phone:"",role:"Initiator",department:"",accessLevel:"Read & Write",loginEmail:""});router.refresh()}catch{setError("Could not create user. Try again.")}finally{setBusy(false)}}
-return <form onSubmit={submit} noValidate><div className="grid gap-4"><Field label="Full name" value={form.fullName} onChange={v=>set("fullName",v)} required/><Field label="Contact email" type="email" value={form.email} onChange={v=>set("email",v)} required/><Field label="Phone number" value={form.phone} onChange={v=>set("phone",v)} required/><div><label className="field-label">Role</label><select className="field-input" value={form.role} onChange={e=>set("role",e.target.value)}>{ROLES.map(role=><option key={role}>{role}</option>)}</select></div>{client?<><Field label="Client account email" type="email" value={form.loginEmail} onChange={v=>set("loginEmail",v)} required/><p className="text-xs text-slate-500">Use this dedicated login email where it differs from the client’s corporate or personal contact email.</p></>:<><div><label className="field-label">Department</label><select className="field-input" value={form.department} onChange={e=>set("department",e.target.value)} required><option value="">Select…</option>{DEPARTMENTS.map(d=><option key={d}>{d}</option>)}</select></div><div><label className="field-label">Access level</label><select className="field-input" value={form.accessLevel} onChange={e=>set("accessLevel",e.target.value)}><option>Read & Write</option><option>Read Only</option></select></div></>}<p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">A secure temporary password is generated automatically. The login email receives a Supabase password-set link through SMTP.</p></div>{error&&<p className="field-error">{error}</p>}{success&&<p className="mt-4 text-sm text-green-700">{success}</p>}<button disabled={busy} className="btn-primary mt-6 w-full">{busy?"Creating…":"Create user"}</button></form> }
-function Field({label,value,onChange,type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;type?:string;required?:boolean}){return <div><label className="field-label">{label}</label><input className="field-input" type={type} required={required} value={value} onChange={e=>onChange(e.target.value)}/></div>}
+
+const ROLES = [
+  "Initiator",
+  "Authorizer",
+  "MD",
+  "MD Office",
+  "Executive Director",
+  "Non-Executive Director",
+  "Finance & Admin",
+  "Business Development",
+  "Operations",
+  "Internal Control",
+];
+
+const DEPARTMENTS = [
+  "MD",
+  "MD Office",
+  "Executive Director",
+  "Non-Executive Director",
+  "Finance & Admin",
+  "Business Development",
+  "Operations",
+  "Audit/Internal Control",
+];
+
+type Project = {
+  projectid: string;
+  projecttitle: string;
+};
+
+export default function CreateUserForm({
+  projects,
+}: {
+  projects: Project[];
+}) {
+  const router = useRouter();
+
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    role: "Initiator",
+    department: "",
+    accessLevel: "Read & Write",
+    projectid: "",
+  });
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  function set(key: keyof typeof form, value: string) {
+    setForm((previous) => ({ ...previous, [key]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch("/api/users/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      const body = await response.json();
+
+      if (!response.ok) {
+        setError(body.error ?? "Could not submit the user request.");
+        return;
+      }
+
+      setSuccess(
+        `${form.fullName} has been submitted for MD Office approval. The account cannot sign in until approved.`
+      );
+
+      setForm({
+        fullName: "",
+        email: "",
+        phone: "",
+        role: "Initiator",
+        department: "",
+        accessLevel: "Read & Write",
+        projectid: "",
+      });
+
+      router.refresh();
+    } catch {
+      setError("Could not submit the user request. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate>
+      <div className="grid gap-4">
+        <Field
+          label="Full name"
+          value={form.fullName}
+          onChange={(value) => set("fullName", value)}
+          required
+        />
+
+        <Field
+          label="Contact email"
+          type="email"
+          value={form.email}
+          onChange={(value) => set("email", value)}
+          required
+        />
+
+        <Field
+          label="Phone number"
+          value={form.phone}
+          onChange={(value) => set("phone", value)}
+          required
+        />
+
+        <div>
+          <label className="field-label">Role</label>
+          <select
+            className="field-input"
+            value={form.role}
+            onChange={(event) => set("role", event.target.value)}
+          >
+            {ROLES.map((role) => (
+              <option key={role}>{role}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="field-label">Department</label>
+          <select
+            className="field-input"
+            value={form.department}
+            onChange={(event) => {
+              set("department", event.target.value);
+              set("projectid", "");
+            }}
+            required
+          >
+            <option value="">Select department…</option>
+            {DEPARTMENTS.map((department) => (
+              <option key={department}>{department}</option>
+            ))}
+          </select>
+        </div>
+
+        {form.department === "Operations" && (
+          <div>
+            <label className="field-label">Assigned project code</label>
+            <select
+              className="field-input"
+              value={form.projectid}
+              onChange={(event) => set("projectid", event.target.value)}
+              required
+            >
+              <option value="">Select assigned project…</option>
+              {projects.map((project) => (
+                <option key={project.projectid} value={project.projectid}>
+                  {project.projectid} · {project.projecttitle}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Operations users can access only projects approved for their assignment.
+            </p>
+          </div>
+        )}
+
+        <div>
+          <label className="field-label">Access level</label>
+          <select
+            className="field-input"
+            value={form.accessLevel}
+            onChange={(event) => set("accessLevel", event.target.value)}
+          >
+            <option>Read & Write</option>
+            <option>Read Only</option>
+          </select>
+        </div>
+
+        <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+          Business Development submits staff-user requests. MD Office must
+          approve the request before the staff account can sign in.
+        </p>
+      </div>
+
+      {error && <p className="field-error">{error}</p>}
+      {success && <p className="mt-4 text-sm text-green-700">{success}</p>}
+
+      <button disabled={busy} className="btn-primary mt-6 w-full">
+        {busy ? "Submitting…" : "Submit for MD Office approval"}
+      </button>
+    </form>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="field-label">{label}</label>
+      <input
+        className="field-input"
+        type={type}
+        required={required}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}

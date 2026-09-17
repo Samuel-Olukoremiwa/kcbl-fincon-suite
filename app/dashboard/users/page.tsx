@@ -32,13 +32,22 @@ export default async function UsersPage() {
     redirect("/dashboard");
   }
 
-  const [{ data: users }, { data: roles }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("userid, fullname, email, usertype, status, department, accesslevel, roleid, roles(rolename)")
-      .order("userid"),
-    supabase.from("roles").select("roleid, rolename").order("rolename"),
-  ]);
+  const [{ data: users }, { data: roles }, { data: projects }] =
+    await Promise.all([
+      supabase
+        .from("users")
+        .select(
+          "userid, fullname, email, usertype, status, department, accesslevel, roleid, roles(rolename)"
+        )
+        .order("userid"),
+
+      supabase.from("roles").select("roleid, rolename").order("rolename"),
+
+      supabase
+        .from("projects")
+        .select("projectid, projecttitle")
+        .order("projectid"),
+    ]);
 
   return (
     <div>
@@ -57,7 +66,7 @@ export default async function UsersPage() {
       <div className="mt-8 grid gap-6 lg:grid-cols-[380px_1fr]">
         <div className="card p-6">
           <h2 className="mb-4 text-sm font-semibold text-ink">Create a new user</h2>
-          <CreateUserForm />
+          <CreateUserForm projects={projects ?? []} />
         </div>
 
         <div className="card overflow-x-auto">

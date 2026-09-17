@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/viewer";
 
 export async function POST(request: Request) {
   const viewer = await requireStaff();
-  if (!["Authorizer", "Super User"].includes(viewer.roleName)) {
+  if (!["Authorizer", "MD", "Super User"].includes(viewer.roleName)) {
     return NextResponse.json({ error: "Not authorized to approve transactions." }, { status: 403 });
   }
 
@@ -26,6 +26,18 @@ export async function POST(request: Request) {
   }
 
   const supabase = createClient();
+  const { data: transaction } = await supabase.from(table).select("transactiondate, projectid, amount").eq("transactionid", transactionid).single();
+  if (!transaction) return NextResponse.json({ error: "Transaction not found." }, { status: 404 });
+  if (status === "Approved" && table === "cashoutflowexpenditure" && transaction.projectid) {
+    const [{ data: inflows }, { data: outflows }] = await Promise.all([
+      supabase.from("cashinflowreceivables").select("amount").eq("projectid", transaction.projectid).eq("approvalstatus", "Approved"),
+      supabase.from("cashoutflowexpenditure").select("amount").eq("projectid", transaction.projectid).eq("approvalstatus", "Approved"),
+    ]);
+    const cashPosition = (inflows ?? []).reduce((sum, row) => sum + Number(row.amount), 0) - (outflows ?? []).reduce((sum, row) => sum + Number(row.amount), 0);
+    if (Number(transaction.amount) > cashPosition && !["MD", "Super User"].includes(viewer.roleName)) {
+      return NextResponse.json({ error: "This outflow exceeds the approved project cash position and requires MD authorization." }, { status: 403 });
+    }
+  }
   const { error } = await supabase
     .from(table)
     .update({

@@ -36,7 +36,7 @@ export default async function DashboardLayout({
       />
 
       <div className="min-w-0 flex-1 md:ml-64">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white py-3.5 pl-14 pr-4 md:px-8">
+        <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white py-3.5 pl-14 pr-4 md:px-8">
           <div />
           <div className="flex items-center gap-3">
             <div className="text-right">
@@ -54,7 +54,7 @@ export default async function DashboardLayout({
           </div>
         </header>
 
-        <main className="px-4 py-6 md:px-8 md:py-8">{children}</main>
+        <main id="main-content" className="px-4 py-6 md:px-8 md:py-8">{children}</main>
       </div>
     </div>
   );

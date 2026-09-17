@@ -1,6 +1,22 @@
 import { Building2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requirePageAccess } from "@/lib/viewer";
-import ProjectForm from "./project-form";
-import { money, date } from "@/lib/client-utils";
-export default async function ProjectsPage(){const supabase=createClient();await requirePageAccess("projects");const [{data:projects},{data:clients},{data:managers}]=await Promise.all([supabase.from("projects").select("projectid,projecttitle,projectlocation,projecttype,estimatedvalue,startdate,expectedenddate,status,clients(fullnameorcompanyname)").order("projectid",{ascending:false}),supabase.from("clients").select("clientid,fullnameorcompanyname").order("fullnameorcompanyname"),supabase.from("users").select("userid,fullname").eq("usertype","Staff").order("fullname")]);return <div><header className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white"><Building2 size={20}/></div><div><h1 className="text-xl font-semibold">Projects</h1><p className="text-sm text-slate-500">Create projects and link them to approved clients.</p></div></header><div className="mt-8 grid gap-6 xl:grid-cols-[420px_1fr]"><div className="card p-6"><ProjectForm existingIds={projects?.map(p=>p.projectid)} clients={clients??[]} managers={managers??[]}/></div><div className="card overflow-hidden"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Project</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Value</th><th className="px-4 py-3">Dates</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{projects?.map(p=><tr key={p.projectid}><td className="px-4 py-3"><b>{p.projecttitle}</b><span className="block text-xs text-slate-400">{p.projectid} · {p.projectlocation}</span></td><td className="px-4 py-3">{(p.clients as unknown as {fullnameorcompanyname:string}|null)?.fullnameorcompanyname??"—"}</td><td className="px-4 py-3">{money(p.estimatedvalue)}</td><td className="px-4 py-3 text-xs">{date(p.startdate)}<span className="block">to {date(p.expectedenddate)}</span></td><td className="px-4 py-3"><span className="rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">{p.status}</span></td></tr>)}{!projects?.length&&<tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400">No projects yet.</td></tr>}</tbody></table></div></div></div>}
+import { canCreateClientOrProject } from "@/lib/access";
+import ProjectWorkspace from "./project-workspace";
+
+export default async function ProjectsPage() {
+  const viewer = await requirePageAccess("projects");
+  const supabase = createClient();
+  const [{ data: projects }, { data: clients }, { data: managers }, { data: inflows }, { data: outflows }] = await Promise.all([
+    supabase.from("projects").select("projectid,clientid,projecttitle,projectlocation,estimatedvalue,startdate,expectedenddate,status").order("clientid").order("projectid"),
+    supabase.from("clients").select("clientid,fullnameorcompanyname").order("fullnameorcompanyname"),
+    supabase.from("users").select("userid,fullname").eq("usertype", "Staff").order("fullname"),
+    supabase.from("cashinflowreceivables").select("projectid,amount,approvalstatus"),
+    supabase.from("cashoutflowexpenditure").select("projectid,amount,approvalstatus"),
+  ]);
+  const totals = (rows: { projectid: string | null; amount: number | string; approvalstatus: string }[]) => rows.reduce<Record<string, number>>((all, row) => { if (row.projectid && row.approvalstatus === "Approved") all[row.projectid] = (all[row.projectid] ?? 0) + Number(row.amount); return all; }, {});
+  const inflow = totals(inflows ?? []), outflow = totals(outflows ?? []);
+  const clientNames = new Map((clients ?? []).map(client => [client.clientid, client.fullnameorcompanyname]));
+  const projectRows = (projects ?? []).map(project => ({ ...project, clientName: clientNames.get(project.clientid) ?? "Unassigned", inflow: inflow[project.projectid] ?? 0, outflow: outflow[project.projectid] ?? 0 }));
+  return <div><header className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white"><Building2 size={20}/></div><div><h1 className="text-xl font-semibold">Projects</h1><p className="text-sm text-slate-500">Business Development creates drafts; MD Office authorizes activation and status changes.</p></div></header><ProjectWorkspace projects={projectRows} clients={clients ?? []} managers={managers ?? []} canEdit={viewer.department === "MD Office" || viewer.roleName === "Super User"} canCreate={canCreateClientOrProject(viewer)}/></div>;
+}
