@@ -19,8 +19,8 @@ project (schema, RLS policies, and seed data already built and tested).
   uses a mutually exclusive Supplier/Subcontractor selector.
 - **Approval queue and audit trail**: Checker/Super Admin approval/rejection
   actions, self-approval prevention, rejection reasons, and append-only logs.
-- **Client Portal**: read-only account, project, inflow, document and private monthly-report view.
-- **Monthly project reports**: MD Office upload of one PDF per project/month (100 MB maximum), private client downloads, and Resend reminders/notifications.
+- **Client Portal**: read-only account, project, inflow, document and private weekly Progress Report view.
+- **Weekly Progress Reports**: assigned Operations staff upload one PDF per project/week (100 MB maximum); supervisors review, MD Office authorizes, and clients receive immediate availability notices.
 
 ## Setup
 
@@ -69,7 +69,7 @@ project (schema, RLS policies, and seed data already built and tested).
 4. In Resend, verify the sender domain used by `RESEND_FROM_EMAIL`.
 5. Deploy. `vercel.json` schedules the secure report job daily at 07:00 UTC
    (08:00 Africa/Lagos). It sends MD Office reminders three days and one day
-   before month end, and client availability notices on month end.
+   before the weekly Sunday deadline, and immediate client availability notices after upload.
 
 **Reminder:** Vercel's free Hobby plan is for personal, non-commercial
 use only. This is a commercial system for a business (KCBL), so plan to
@@ -91,7 +91,7 @@ production — Hobby is fine for now, while still building/testing.
 - `middleware.ts` — refreshes the session cookie on every request and
   redirects unauthenticated visitors away from `/dashboard`.
 
-## Monthly-report database migration
+## Progress-report database migrations
 
 Run [supabase/20260917_project_reports.sql](./supabase/20260917_project_reports.sql)
 once in Supabase SQL Editor before using Project Reports. It creates the report

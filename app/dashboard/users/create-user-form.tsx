@@ -32,11 +32,7 @@ type Project = {
   projecttitle: string;
 };
 
-export default function CreateUserForm({
-  projects,
-}: {
-  projects: Project[];
-}) {
+export default function CreateUserForm({ projects }: { projects: Project[] }) {
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -50,6 +46,7 @@ export default function CreateUserForm({
   });
 
   const [busy, setBusy] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -59,6 +56,13 @@ export default function CreateUserForm({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+
+    if (!confirmed) {
+      setError(
+        "Confirm that you are authorised to submit this staff member's details.",
+      );
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -79,7 +83,7 @@ export default function CreateUserForm({
       }
 
       setSuccess(
-        `${form.fullName} has been submitted for MD Office approval. The account cannot sign in until approved.`
+        `${form.fullName} has been submitted for MD Office approval. The account cannot sign in until approved.`,
       );
 
       setForm({
@@ -173,7 +177,8 @@ export default function CreateUserForm({
               ))}
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              Operations users can access only projects approved for their assignment.
+              Operations users can access only projects approved for their
+              assignment.
             </p>
           </div>
         )}
@@ -194,12 +199,24 @@ export default function CreateUserForm({
           Business Development submits staff-user requests. MD Office must
           approve the request before the staff account can sign in.
         </p>
+        <label className="flex items-start gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <span>
+            I confirm I am authorised to submit this staff member’s business
+            contact details for account setup and approval.
+          </span>
+        </label>
       </div>
 
       {error && <p className="field-error">{error}</p>}
       {success && <p className="mt-4 text-sm text-green-700">{success}</p>}
 
-      <button disabled={busy} className="btn-primary mt-6 w-full">
+      <button disabled={busy || !confirmed} className="btn-primary mt-6 w-full">
         {busy ? "Submitting…" : "Submit for MD Office approval"}
       </button>
     </form>

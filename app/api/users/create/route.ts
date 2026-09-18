@@ -19,49 +19,45 @@ const VALID_ROLES = [
 export async function POST(request: Request) {
   const body = await request.json();
 
-  const {
-    fullName,
-    email,
-    phone,
-    role,
-    department,
-    accessLevel,
-    projectid,
-  } = body as {
-    fullName?: string;
-    email?: string;
-    phone?: string;
-    role?: string;
-    department?: string;
-    accessLevel?: "Read & Write" | "Read Only";
-    projectid?: string;
-  };
+  const { fullName, email, phone, role, department, accessLevel, projectid } =
+    body as {
+      fullName?: string;
+      email?: string;
+      phone?: string;
+      role?: string;
+      department?: string;
+      accessLevel?: "Read & Write" | "Read Only";
+      projectid?: string;
+    };
 
   if (!fullName || !email || !phone || !role || !department) {
     return NextResponse.json(
-      { error: "Full name, email, phone number, role, and department are required." },
-      { status: 400 }
+      {
+        error:
+          "Full name, email, phone number, role, and department are required.",
+      },
+      { status: 400 },
     );
   }
 
   if (!VALID_ROLES.includes(role)) {
     return NextResponse.json(
       { error: "Select a valid staff role." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (!["Read & Write", "Read Only"].includes(accessLevel ?? "")) {
     return NextResponse.json(
       { error: "Select a valid access level." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   if (department === "Operations" && !projectid) {
     return NextResponse.json(
       { error: "Operations staff must be assigned to a project code." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -74,7 +70,7 @@ export async function POST(request: Request) {
   if (!caller) {
     return NextResponse.json(
       { error: "You are not signed in." },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -87,16 +83,13 @@ export async function POST(request: Request) {
   if (!callerProfile) {
     return NextResponse.json(
       { error: "Your staff profile could not be found." },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
   const callerRole =
-    (
-      callerProfile.roles as unknown as
-        | { rolename: string }
-        | null
-    )?.rolename ?? "";
+    (callerProfile.roles as unknown as { rolename: string } | null)?.rolename ??
+    "";
 
   const callerCanCreate =
     callerRole === "Super User" ||
@@ -108,7 +101,7 @@ export async function POST(request: Request) {
         error:
           "Only Business Development or a Super User can submit staff-user requests.",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -124,7 +117,7 @@ export async function POST(request: Request) {
     if (!project) {
       return NextResponse.json(
         { error: "The selected project code does not exist." },
-        { status: 400 }
+        { status: 400 },
       );
     }
   }
@@ -138,11 +131,9 @@ export async function POST(request: Request) {
   if (roleError || !roleRow) {
     return NextResponse.json(
       {
-        error:
-          roleError?.message ??
-          "Could not find the selected staff role.",
+        error: roleError?.message ?? "Could not find the selected staff role.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -175,10 +166,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          authError?.message ??
-          "Could not create the secure sign-in account.",
+          authError?.message ?? "Could not create the secure sign-in account.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -193,7 +183,9 @@ export async function POST(request: Request) {
     accesslevel: accessLevel,
     roleid: roleRow.roleid,
     passwordhash: "SUPABASE_AUTH_MANAGED",
-    status: "Pending Approval",
+    // The existing users.status field is VARCHAR(10). "Pending" preserves
+    // the approval state without exceeding that database constraint.
+    status: "Pending",
     datecreated: new Date().toISOString().slice(0, 10),
     createdby: callerProfile.userid,
     authuserid: newAuthUser.user.id,
@@ -202,10 +194,7 @@ export async function POST(request: Request) {
   if (userError) {
     await admin.auth.admin.deleteUser(newAuthUser.user.id);
 
-    return NextResponse.json(
-      { error: userError.message },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: userError.message }, { status: 400 });
   }
 
   if (department === "Operations") {
@@ -227,7 +216,7 @@ export async function POST(request: Request) {
             "The staff request was created, but the project assignment request failed: " +
             assignmentError.message,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
   }
@@ -240,7 +229,7 @@ export async function POST(request: Request) {
         persistSession: false,
         autoRefreshToken: false,
       },
-    }
+    },
   );
 
   await mailer.auth.resetPasswordForEmail(email.trim(), {
@@ -254,6 +243,6 @@ export async function POST(request: Request) {
       message:
         "Staff-user request submitted. MD Office must approve it before the account can sign in.",
     },
-    { status: 201 }
+    { status: 201 },
   );
 }

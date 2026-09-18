@@ -13,7 +13,7 @@ type Project = {
 type Report = {
   reportid: number;
   projectid: string;
-  reportmonth: string;
+  reportweek: string;
   filename: string;
   filesize: number;
   uploadedat: string;
@@ -33,31 +33,48 @@ type Report = {
     clients?: { fullnameorcompanyname: string } | null;
   } | null;
   users?: { fullname: string } | null;
+  reviewer?: { fullname: string } | null;
+  authorizer?: { fullname: string } | null;
 };
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
-function currentMonth() {
-  return `${new Date().toISOString().slice(0, 7)}-01`;
+function localDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
-function monthLabel(value: string) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-NG", {
-    month: "long",
-    year: "numeric",
-  });
+function currentWeekStart() {
+  const today = new Date();
+  today.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  return localDateValue(today);
+}
+
+function weekLabel(value: string) {
+  const start = new Date(`${value}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return `${start.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })} – ${end.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+function mondayFor(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+  // Keep the local calendar date. toISOString() would shift a midnight WAT
+  // Monday back to Sunday in UTC, failing the server's Monday validation.
+  return localDateValue(date);
 }
 
 function sizeLabel(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(
-    bytes < 10 * 1024 * 1024 ? 1 : 0
+    bytes < 10 * 1024 * 1024 ? 1 : 0,
   )} MB`;
 }
 
 function dateTime(value?: string | null) {
-  return value
-    ? new Date(value).toLocaleString("en-NG")
-    : "—";
+  return value ? new Date(value).toLocaleString("en-NG") : "—";
 }
 
 export default function ReportWorkspace({
@@ -77,12 +94,17 @@ export default function ReportWorkspace({
   const [message, setMessage] = useState<string | null>(null);
 
   const [projectId, setProjectId] = useState(projects[0]?.projectid ?? "");
-  const [reportMonth, setReportMonth] = useState(currentMonth());
+  const [reportWeek, setReportWeek] = useState(currentWeekStart());
   const [file, setFile] = useState<File | null>(null);
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [monthFilter, setMonthFilter] = useState("All months");
+  const [reviewStatusFilter, setReviewStatusFilter] = useState(
+    "All request statuses",
+  );
+  const [weekFilter, setWeekFilter] = useState("All weeks");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const [reviewValues, setReviewValues] = useState<
     Record<number, { progress: string; comments: string }>
@@ -112,32 +134,38 @@ export default function ReportWorkspace({
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.projectid === projectId),
-    [projects, projectId]
+    [projects, projectId],
   );
 
   const availableStatuses = useMemo(
     () =>
-      [...new Set(reports.map((report) => report.projects?.status).filter(Boolean))] as string[],
-    [reports]
+      [
+        ...new Set(
+          reports.map((report) => report.projects?.status).filter(Boolean),
+        ),
+      ] as string[],
+    [reports],
   );
 
-  const availableMonths = useMemo(
-    () => [...new Set(reports.map((report) => report.reportmonth))],
-    [reports]
+  const availableWeeks = useMemo(
+    () => [...new Set(reports.map((report) => report.reportweek))],
+    [reports],
   );
 
   const filteredReports = useMemo(() => {
     const normalized = query.toLowerCase();
 
     return reports.filter((report) => {
-      const clientName =
-        report.projects?.clients?.fullnameorcompanyname ?? "";
+      const clientName = report.projects?.clients?.fullnameorcompanyname ?? "";
 
       const matchesSearch = [
         clientName,
         report.projects?.projecttitle ?? "",
         report.projectid,
         report.filename,
+        report.users?.fullname ?? "",
+        report.reviewer?.fullname ?? "",
+        report.authorizer?.fullname ?? "",
       ]
         .join(" ")
         .toLowerCase()
@@ -147,13 +175,33 @@ export default function ReportWorkspace({
         statusFilter === "All statuses" ||
         report.projects?.status === statusFilter;
 
-      const matchesMonth =
-        monthFilter === "All months" ||
-        report.reportmonth === monthFilter;
+      const matchesWeek =
+        weekFilter === "All weeks" || report.reportweek === weekFilter;
+      const matchesRequestStatus =
+        reviewStatusFilter === "All request statuses" ||
+        (report.reviewstatus ?? "Submitted") === reviewStatusFilter;
+      const uploadedDate = report.uploadedat.slice(0, 10);
+      const matchesDateRange =
+        (!fromDate || uploadedDate >= fromDate) &&
+        (!toDate || uploadedDate <= toDate);
 
-      return matchesSearch && matchesStatus && matchesMonth;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesWeek &&
+        matchesRequestStatus &&
+        matchesDateRange
+      );
     });
-  }, [reports, query, statusFilter, monthFilter]);
+  }, [
+    reports,
+    query,
+    statusFilter,
+    reviewStatusFilter,
+    weekFilter,
+    fromDate,
+    toDate,
+  ]);
 
   const groupedReports = useMemo(() => {
     return filteredReports.reduce<Record<string, Report[]>>(
@@ -170,7 +218,7 @@ export default function ReportWorkspace({
 
         return groups;
       },
-      {}
+      {},
     );
   }, [filteredReports]);
 
@@ -201,20 +249,17 @@ export default function ReportWorkspace({
     try {
       const request = {
         projectid: projectId,
-        reportmonth: reportMonth,
+        reportweek: reportWeek,
         filename: file.name,
         filesize: file.size,
         mimetype: file.type,
       };
 
-      const signedResponse = await fetch(
-        "/api/project-reports/upload-url",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
-        }
-      );
+      const signedResponse = await fetch("/api/project-reports/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
 
       const signedBody = await signedResponse.json();
 
@@ -224,55 +269,47 @@ export default function ReportWorkspace({
 
       const { error: uploadError } = await createClient()
         .storage.from("project-reports")
-        .uploadToSignedUrl(
-          signedBody.storagepath,
-          signedBody.token,
-          file,
-          { contentType: "application/pdf" }
-        );
+        .uploadToSignedUrl(signedBody.storagepath, signedBody.token, file, {
+          contentType: "application/pdf",
+        });
 
       if (uploadError) {
         throw new Error(uploadError.message);
       }
 
-      const completeResponse = await fetch(
-        "/api/project-reports/complete",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...request,
-            storagepath: signedBody.storagepath,
-          }),
-        }
-      );
+      const completeResponse = await fetch("/api/project-reports/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...request,
+          storagepath: signedBody.storagepath,
+        }),
+      });
 
       const completeBody = await completeResponse.json();
 
       if (!completeResponse.ok) {
         throw new Error(
-          completeBody.error ?? "Could not save Progress Report details."
+          completeBody.error ?? "Could not save Progress Report details.",
         );
       }
 
       setFile(null);
 
       const input = document.getElementById(
-        "progress-report-file"
+        "progress-report-file",
       ) as HTMLInputElement | null;
 
       if (input) input.value = "";
 
       setMessage(
         completeBody.emailMessage ??
-          "Progress Report uploaded and the client notified."
+          "Progress Report uploaded and the client notified.",
       );
 
       await load();
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Upload failed."
-      );
+      setMessage(error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setBusy(false);
     }
@@ -280,7 +317,7 @@ export default function ReportWorkspace({
 
   async function reviewReport(
     report: Report,
-    decision: "Reviewed" | "Rejected"
+    decision: "Reviewed" | "Rejected",
   ) {
     const values = reviewValues[report.reportid] ?? {
       progress: "",
@@ -310,7 +347,7 @@ export default function ReportWorkspace({
             progresspct: Number(values.progress),
             comments: values.comments,
           }),
-        }
+        },
       );
 
       const body = await response.json();
@@ -322,13 +359,13 @@ export default function ReportWorkspace({
       setMessage(
         decision === "Reviewed"
           ? "Progress Report reviewed and sent to MD Office."
-          : "Progress Report rejected."
+          : "Progress Report rejected.",
       );
 
       await load();
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : "Could not review report."
+        error instanceof Error ? error.message : "Could not review report.",
       );
     } finally {
       setBusy(false);
@@ -337,7 +374,7 @@ export default function ReportWorkspace({
 
   async function authorizeReport(
     report: Report,
-    decision: "Authorized" | "Rejected"
+    decision: "Authorized" | "Rejected",
   ) {
     setBusy(true);
     setMessage(null);
@@ -349,7 +386,7 @@ export default function ReportWorkspace({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ decision }),
-        }
+        },
       );
 
       const body = await response.json();
@@ -361,15 +398,13 @@ export default function ReportWorkspace({
       setMessage(
         decision === "Authorized"
           ? "Progress Report authorized."
-          : "Progress Report rejected."
+          : "Progress Report rejected.",
       );
 
       await load();
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not authorize report."
+        error instanceof Error ? error.message : "Could not authorize report.",
       );
     } finally {
       setBusy(false);
@@ -400,10 +435,7 @@ export default function ReportWorkspace({
               >
                 <option value="">Select project…</option>
                 {projects.map((project) => (
-                  <option
-                    key={project.projectid}
-                    value={project.projectid}
-                  >
+                  <option key={project.projectid} value={project.projectid}>
                     {project.clients?.fullnameorcompanyname ?? "Client"} ·{" "}
                     {project.projecttitle} · {project.projectid}
                   </option>
@@ -412,14 +444,14 @@ export default function ReportWorkspace({
             </label>
 
             <label>
-              <span className="field-label">Reporting month</span>
+              <span className="field-label">Reporting week</span>
               <input
                 className="field-input"
-                type="month"
-                max={currentMonth().slice(0, 7)}
-                value={reportMonth.slice(0, 7)}
+                type="date"
+                max={localDateValue(new Date())}
+                value={reportWeek}
                 onChange={(event) =>
-                  setReportMonth(`${event.target.value}-01`)
+                  setReportWeek(mondayFor(event.target.value))
                 }
                 required
               />
@@ -432,9 +464,7 @@ export default function ReportWorkspace({
                 className="field-input pt-2"
                 type="file"
                 accept="application/pdf,.pdf"
-                onChange={(event) =>
-                  setFile(event.target.files?.[0] ?? null)
-                }
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 required
               />
             </label>
@@ -461,7 +491,7 @@ export default function ReportWorkspace({
       )}
 
       <section className="card p-4">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <input
             className="field-input"
             value={query}
@@ -482,23 +512,53 @@ export default function ReportWorkspace({
 
           <select
             className="field-input"
-            value={monthFilter}
-            onChange={(event) => setMonthFilter(event.target.value)}
+            value={reviewStatusFilter}
+            onChange={(event) => setReviewStatusFilter(event.target.value)}
           >
-            <option>All months</option>
-            {availableMonths.map((value) => (
+            <option>All request statuses</option>
+            <option>Submitted</option>
+            <option>Reviewed</option>
+            <option>Authorized</option>
+            <option>Rejected</option>
+          </select>
+
+          <select
+            className="field-input"
+            value={weekFilter}
+            onChange={(event) => setWeekFilter(event.target.value)}
+          >
+            <option>All weeks</option>
+            {availableWeeks.map((value) => (
               <option key={value} value={value}>
-                {monthLabel(value)}
+                {weekLabel(value)}
               </option>
             ))}
           </select>
+
+          <label>
+            <span className="field-label">Uploaded from</span>
+            <input
+              className="field-input"
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+            />
+          </label>
+          <label>
+            <span className="field-label">Uploaded to</span>
+            <input
+              className="field-input"
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+            />
+          </label>
         </div>
       </section>
 
       <section className="space-y-5">
         {Object.entries(groupedReports).map(([key, group]) => {
-          const [clientName, projectName, projectStatus] =
-            key.split("|||");
+          const [clientName, projectName, projectStatus] = key.split("|||");
 
           return (
             <article key={key} className="card overflow-hidden">
@@ -538,12 +598,12 @@ export default function ReportWorkspace({
                         <div>
                           <p className="font-semibold">{report.filename}</p>
                           <p className="mt-1 text-sm text-slate-500">
-                            {monthLabel(report.reportmonth)} ·{" "}
+                            Week of {weekLabel(report.reportweek)} ·{" "}
                             {sizeLabel(Number(report.filesize))}
                           </p>
                           <p className="mt-1 text-xs text-slate-400">
-                            Uploaded by {report.users?.fullname ?? "Operations"} ·{" "}
-                            {dateTime(report.uploadedat)}
+                            Uploaded by {report.users?.fullname ?? "Operations"}{" "}
+                            · {dateTime(report.uploadedat)}
                           </p>
                         </div>
 
@@ -571,7 +631,7 @@ export default function ReportWorkspace({
                           </p>
                           <p className="mt-1">
                             {report.supervisorreviewedat
-                              ? dateTime(report.supervisorreviewedat)
+                              ? `${report.reviewer?.fullname ?? "Supervisor"} · ${dateTime(report.supervisorreviewedat)}`
                               : "Awaiting review"}
                           </p>
                         </div>
@@ -595,7 +655,7 @@ export default function ReportWorkspace({
                           </p>
                           <p className="mt-1">
                             {report.authorizedat
-                              ? dateTime(report.authorizedat)
+                              ? `${report.authorizer?.fullname ?? "MD Office"} · ${dateTime(report.authorizedat)}`
                               : "Awaiting authorization"}
                           </p>
                         </div>
@@ -605,9 +665,7 @@ export default function ReportWorkspace({
                         (report.reviewstatus ?? "Submitted") ===
                           "Submitted" && (
                           <div className="mt-4 rounded-md border border-slate-200 p-4">
-                            <p className="font-medium">
-                              Supervisor review
-                            </p>
+                            <p className="font-medium">Supervisor review</p>
 
                             <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr_auto_auto]">
                               <input
@@ -647,9 +705,7 @@ export default function ReportWorkspace({
                               <button
                                 className="btn-primary"
                                 disabled={busy}
-                                onClick={() =>
-                                  reviewReport(report, "Reviewed")
-                                }
+                                onClick={() => reviewReport(report, "Reviewed")}
                               >
                                 Review
                               </button>
@@ -657,9 +713,7 @@ export default function ReportWorkspace({
                               <button
                                 className="btn-secondary"
                                 disabled={busy}
-                                onClick={() =>
-                                  reviewReport(report, "Rejected")
-                                }
+                                onClick={() => reviewReport(report, "Rejected")}
                               >
                                 Reject
                               </button>
@@ -667,30 +721,27 @@ export default function ReportWorkspace({
                           </div>
                         )}
 
-                      {canAuthorize &&
-                        report.reviewstatus === "Reviewed" && (
-                          <div className="mt-4 flex flex-wrap gap-3">
-                            <button
-                              className="btn-primary"
-                              disabled={busy}
-                              onClick={() =>
-                                authorizeReport(report, "Authorized")
-                              }
-                            >
-                              Authorize report
-                            </button>
+                      {canAuthorize && report.reviewstatus === "Reviewed" && (
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <button
+                            className="btn-primary"
+                            disabled={busy}
+                            onClick={() =>
+                              authorizeReport(report, "Authorized")
+                            }
+                          >
+                            Authorize report
+                          </button>
 
-                            <button
-                              className="btn-secondary"
-                              disabled={busy}
-                              onClick={() =>
-                                authorizeReport(report, "Rejected")
-                              }
-                            >
-                              Reject report
-                            </button>
-                          </div>
-                        )}
+                          <button
+                            className="btn-secondary"
+                            disabled={busy}
+                            onClick={() => authorizeReport(report, "Rejected")}
+                          >
+                            Reject report
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

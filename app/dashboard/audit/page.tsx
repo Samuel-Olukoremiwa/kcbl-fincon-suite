@@ -1,12 +1,17 @@
 import { Landmark } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePageAccess } from "@/lib/viewer";
+import { canViewFinancialRecords } from "@/lib/access";
 import AuditWorkspace from "./audit-workspace";
 
 export default async function AuditPage() {
-  await requirePageAccess("audit");
+  const viewer = await requirePageAccess("audit");
+  const canViewFinancial = canViewFinancialRecords(viewer);
 
-  const supabase = createClient();
+  // The page guard above authorizes Audit Trail access. Use the server admin
+  // client for the read so report history is not silently removed by the
+  // storage/report RLS policies that apply to the browser session.
+  const supabase = createAdminClient();
 
   const [
     { data: inflows },
@@ -19,21 +24,25 @@ export default async function AuditPage() {
     supabase
       .from("cashinflowreceivables")
       .select(
-        "transactionid,projectid,amount,makeruserid,checkeruserid,approvalstatus,approvaldate"
+        canViewFinancial
+          ? "transactionid,projectid,amount,makeruserid,checkeruserid,approvalstatus,approvaldate"
+          : "transactionid,projectid,makeruserid,checkeruserid,approvalstatus,approvaldate",
       )
       .order("transactionid", { ascending: false }),
 
     supabase
       .from("cashoutflowexpenditure")
       .select(
-        "transactionid,projectid,amount,makeruserid,checkeruserid,approvalstatus,approvaldate"
+        canViewFinancial
+          ? "transactionid,projectid,amount,makeruserid,checkeruserid,approvalstatus,approvaldate"
+          : "transactionid,projectid,makeruserid,checkeruserid,approvalstatus,approvaldate",
       )
       .order("transactionid", { ascending: false }),
 
     supabase
       .from("makercheckerauditlog")
       .select(
-        "logid,transactiontype,transactionid,actiontype,actionbyuserid,actiondate,actiontime,comments"
+        "logid,transactiontype,transactionid,actiontype,actionbyuserid,actiondate,actiontime,comments",
       )
       .order("actiondate", { ascending: false })
       .order("actiontime", { ascending: false }),
@@ -45,45 +54,42 @@ export default async function AuditPage() {
     supabase
       .from("projectreports")
       .select(
-        "reportid,projectid,reportmonth,filename,reviewstatus,progresspct,uploadedat,uploadedbyuserid,supervisorreviewedat,supervisorreviewedbyuserid,authorizedat,authorizedbyuserid,supervisorcomments"
+        "reportid,projectid,reportweek,filename,reviewstatus,progresspct,uploadedat,uploadedbyuserid,supervisorreviewedat,supervisorreviewedbyuserid,authorizedat,authorizedbyuserid,supervisorcomments",
       )
       .order("uploadedat", { ascending: false }),
   ]);
 
   const userNames = new Map(
-    (users ?? []).map((user) => [user.userid, user.fullname])
+    (users ?? []).map((user) => [user.userid, user.fullname]),
   );
 
   const projectNames = new Map(
     (projects ?? []).map((project) => [
       project.projectid,
       project.projecttitle,
-    ])
+    ]),
   );
 
   const logsFor = (transactionId: string) =>
     (logs ?? []).filter((log) => log.transactionid === transactionId);
 
   const transactions = [
-    ...(inflows ?? []).map((transaction) => ({
+    ...(inflows ?? []).map((transaction: any) => ({
       ...transaction,
       direction: "Inflow",
     })),
-    ...(outflows ?? []).map((transaction) => ({
+    ...(outflows ?? []).map((transaction: any) => ({
       ...transaction,
       direction: "Outflow",
     })),
   ].map((transaction) => {
     const entries = logsFor(transaction.transactionid);
 
-    const initiated = entries.find(
-      (entry) => entry.actiontype === "Created"
-    );
+    const initiated = entries.find((entry) => entry.actiontype === "Created");
 
     const authorized = entries.find(
       (entry) =>
-        entry.actiontype === "Approved" ||
-        entry.actiontype === "Rejected"
+        entry.actiontype === "Approved" || entry.actiontype === "Rejected",
     );
 
     return {
@@ -94,13 +100,12 @@ export default async function AuditPage() {
         ? projectNames.get(transaction.projectid)
         : null,
       initiatorName:
-        userNames.get(transaction.makeruserid) ??
-        transaction.makeruserid,
+        userNames.get(transaction.makeruserid) ?? transaction.makeruserid,
       initiatedDate: initiated?.actiondate ?? null,
       initiatedTime: initiated?.actiontime ?? null,
       authorizerName: transaction.checkeruserid
-        ? userNames.get(transaction.checkeruserid) ??
-          transaction.checkeruserid
+        ? (userNames.get(transaction.checkeruserid) ??
+          transaction.checkeruserid)
         : null,
       authorizedDate: authorized?.actiondate ?? transaction.approvaldate,
       authorizedTime: authorized?.actiontime ?? null,
@@ -111,15 +116,14 @@ export default async function AuditPage() {
   const records = (logs ?? [])
     .filter((log) =>
       ["Client", "Project", "Supplier", "Subcontractor"].includes(
-        log.transactiontype
-      )
+        log.transactiontype,
+      ),
     )
     .map((log) => ({
       ...log,
       id: log.transactionid,
       type: log.transactiontype,
-      userName:
-        userNames.get(log.actionbyuserid) ?? log.actionbyuserid,
+      userName: userNames.get(log.actionbyuserid) ?? log.actionbyuserid,
       date: log.actiondate,
       time: log.actiontime,
     }));
@@ -128,21 +132,19 @@ export default async function AuditPage() {
     id: report.reportid,
     projectName: projectNames.get(report.projectid) ?? report.projectid,
     filename: report.filename,
-    month: report.reportmonth,
+    week: report.reportweek,
     status: report.reviewstatus,
     progress: report.progresspct,
     submittedBy:
-      userNames.get(report.uploadedbyuserid) ??
-      report.uploadedbyuserid,
+      userNames.get(report.uploadedbyuserid) ?? report.uploadedbyuserid,
     submittedAt: report.uploadedat,
     reviewedBy: report.supervisorreviewedbyuserid
-      ? userNames.get(report.supervisorreviewedbyuserid) ??
-        report.supervisorreviewedbyuserid
+      ? (userNames.get(report.supervisorreviewedbyuserid) ??
+        report.supervisorreviewedbyuserid)
       : null,
     reviewedAt: report.supervisorreviewedat,
     authorizedBy: report.authorizedbyuserid
-      ? userNames.get(report.authorizedbyuserid) ??
-        report.authorizedbyuserid
+      ? (userNames.get(report.authorizedbyuserid) ?? report.authorizedbyuserid)
       : null,
     authorizedAt: report.authorizedat,
     comments: report.supervisorcomments,
@@ -167,6 +169,7 @@ export default async function AuditPage() {
         transactions={transactions}
         records={records}
         progressReports={reports}
+        canViewFinancial={canViewFinancial}
       />
     </div>
   );

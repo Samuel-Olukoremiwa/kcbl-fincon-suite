@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/viewer";
 import {
   canAccess,
-  canManageProjectReports,
   canSubmitProgressReports,
 } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -12,24 +11,19 @@ import ReportWorkspace from "./report-workspace";
 export default async function ReportsPage() {
   const viewer = await getViewer();
 
-  const canUpload =
-    canManageProjectReports(viewer) ||
-    canSubmitProgressReports(viewer);
+  const canUpload = canSubmitProgressReports(viewer);
 
   const canReview = viewer.department === "Operations";
 
   const canAuthorize =
-    viewer.department === "MD Office" ||
-    viewer.roleName === "Super User";
+    viewer.department === "MD Office" || viewer.roleName === "Super User";
 
   if (
     !canAccess(viewer, "reports") ||
-    (
-      viewer.userType !== "Client" &&
+    (viewer.userType !== "Client" &&
       !canUpload &&
       !canAuthorize &&
-      viewer.roleName !== "Super User"
-    )
+      viewer.roleName !== "Super User")
   ) {
     redirect("/dashboard?error=forbidden");
   }
@@ -38,25 +32,11 @@ export default async function ReportsPage() {
 
   let projects: any[] = [];
 
-  if (canManageProjectReports(viewer) || viewer.roleName === "Super User") {
-    const { data } = await admin
-      .from("projects")
-      .select(`
-        projectid,
-        projecttitle,
-        clientid,
-        status,
-        clients(fullnameorcompanyname)
-      `)
-      .order("projectid");
-
-    projects = data ?? [];
-  }
-
   if (canSubmitProgressReports(viewer)) {
     const { data } = await admin
       .from("projectassignments")
-      .select(`
+      .select(
+        `
         projects!inner(
           projectid,
           projecttitle,
@@ -64,7 +44,8 @@ export default async function ReportsPage() {
           status,
           clients(fullnameorcompanyname)
         )
-      `)
+      `,
+      )
       .eq("userid", viewer.userId)
       .eq("approvalstatus", "Approved")
       .eq("active", true);

@@ -7,11 +7,52 @@
     @apply bg-paper text-ink antialiased;
     -webkit-tap-highlight-color: rgba(10, 44, 73, 0.18);
   }
+  html {
+    scroll-behavior: smooth;
+  }
+  .dark body {
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  .dark .card,
+  .dark .field-input {
+    background: #111827;
+    border-color: #334155;
+    color: #e2e8f0;
+  }
+  .dark .bg-white {
+    background-color: #111827 !important;
+  }
+  .dark .bg-slate-50,
+  .dark .bg-paper {
+    background-color: #0f172a !important;
+  }
+  .dark .text-ink {
+    color: #f1f5f9 !important;
+  }
+  .dark .text-slate-500,
+  .dark .text-slate-600 {
+    color: #cbd5e1 !important;
+  }
+  .dark .border-slate-200,
+  .dark .border-slate-300 {
+    border-color: #334155 !important;
+  }
 
-  button, a, input, select, summary { touch-action: manipulation; }
+  button,
+  a,
+  input,
+  select,
+  summary {
+    touch-action: manipulation;
+  }
 
-  table { font-variant-numeric: tabular-nums; }
-  .skip-link { @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-navy focus:shadow; }
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-navy focus:shadow;
+  }
 
   /* Visible keyboard focus everywhere — quality floor, not optional. */
   :focus-visible {
@@ -41,11 +82,20 @@
     @apply rounded-lg border border-slate-200 bg-white shadow-sm;
   }
 
-  .table-number { @apply whitespace-nowrap; font-variant-numeric: tabular-nums; }
+  .table-number {
+    @apply whitespace-nowrap;
+    font-variant-numeric: tabular-nums;
+  }
 
-  .section-title { @apply text-xs font-semibold uppercase tracking-[0.16em] text-navy; }
-  .btn-secondary { @apply inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-slate-50; }
-  .field-error { @apply mt-1 text-xs text-red-600; }
+  .section-title {
+    @apply text-xs font-semibold uppercase tracking-[0.16em] text-navy;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-slate-50;
+  }
+  .field-error {
+    @apply mt-1 text-xs text-red-600;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

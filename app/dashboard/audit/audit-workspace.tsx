@@ -7,7 +7,7 @@ type Item = Record<string, any>;
 
 function formatDateTime(
   value: string | null | undefined,
-  time?: string | null
+  time?: string | null,
 ) {
   if (!value) return "—";
 
@@ -23,14 +23,16 @@ export default function AuditWorkspace({
   transactions,
   records,
   progressReports,
+  canViewFinancial,
 }: {
   transactions: Item[];
   records: Item[];
   progressReports: Item[];
+  canViewFinancial: boolean;
 }) {
-  const [view, setView] = useState<
-    "transactions" | "records" | "progress"
-  >("transactions");
+  const [view, setView] = useState<"transactions" | "records" | "progress">(
+    "transactions",
+  );
 
   const [query, setQuery] = useState("");
   const [from, setFrom] = useState("");
@@ -124,25 +126,35 @@ export default function AuditWorkspace({
         </button>
       </div>
 
-      {view === "transactions" && <TransactionAudit rows={rows} />}
+      {view === "transactions" && (
+        <TransactionAudit rows={rows} canViewFinancial={canViewFinancial} />
+      )}
       {view === "records" && <RecordAudit rows={rows} />}
       {view === "progress" && <ProgressReportAudit rows={rows} />}
     </div>
   );
 }
 
-function TransactionAudit({ rows }: { rows: Item[] }) {
+function TransactionAudit({
+  rows,
+  canViewFinancial,
+}: {
+  rows: Item[];
+  canViewFinancial: boolean;
+}) {
   return (
     <div className="mt-6 space-y-6">
       <TransactionGroup
         title="Cash Inflows"
         rows={rows.filter((row) => row.direction === "Inflow")}
+        canViewFinancial={canViewFinancial}
         empty="No cash-inflow audit records match these filters."
       />
 
       <TransactionGroup
         title="Cash Outflows"
         rows={rows.filter((row) => row.direction === "Outflow")}
+        canViewFinancial={canViewFinancial}
         empty="No cash-outflow audit records match these filters."
       />
     </div>
@@ -152,10 +164,12 @@ function TransactionAudit({ rows }: { rows: Item[] }) {
 function TransactionGroup({
   title,
   rows,
+  canViewFinancial,
   empty,
 }: {
   title: string;
   rows: Item[];
+  canViewFinancial: boolean;
   empty: string;
 }) {
   return (
@@ -190,7 +204,15 @@ function TransactionGroup({
                 </span>
               </td>
 
-              <td className="px-4 py-3">{money(row.amount)}</td>
+              <td className="px-4 py-3">
+                {canViewFinancial ? (
+                  money(row.amount)
+                ) : (
+                  <span className="inline-block select-none rounded bg-slate-200 px-2 py-1 text-xs text-slate-500 blur-[1px]">
+                    Restricted
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-3">{row.initiatorName}</td>
 
               <td className="px-4 py-3 text-xs">
@@ -202,10 +224,7 @@ function TransactionGroup({
               </td>
 
               <td className="px-4 py-3 text-xs">
-                {formatDateTime(
-                  row.authorizedDate,
-                  row.authorizedTime
-                )}
+                {formatDateTime(row.authorizedDate, row.authorizedTime)}
               </td>
 
               <td className="px-4 py-3">
@@ -218,10 +237,7 @@ function TransactionGroup({
 
           {!rows.length && (
             <tr>
-              <td
-                colSpan={7}
-                className="px-4 py-10 text-center text-slate-400"
-              >
+              <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                 {empty}
               </td>
             </tr>
@@ -275,10 +291,7 @@ function RecordAudit({ rows }: { rows: Item[] }) {
 
           {!rows.length && (
             <tr>
-              <td
-                colSpan={5}
-                className="px-4 py-10 text-center text-slate-400"
-              >
+              <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
                 No records match these filters.
               </td>
             </tr>
@@ -319,7 +332,7 @@ function ProgressReportAudit({ rows }: { rows: Item[] }) {
               <td className="px-4 py-3">
                 <b>{row.projectName}</b>
                 <span className="block text-xs text-slate-500">
-                  {row.filename} · {date(row.month)}
+                  {row.filename} · Week of {date(row.week)}
                 </span>
               </td>
 
@@ -339,9 +352,7 @@ function ProgressReportAudit({ rows }: { rows: Item[] }) {
 
               <td className="px-4 py-3">
                 {row.progress ?? "—"}
-                {row.progress !== null && row.progress !== undefined
-                  ? "%"
-                  : ""}
+                {row.progress !== null && row.progress !== undefined ? "%" : ""}
               </td>
 
               <td className="px-4 py-3">
@@ -365,10 +376,7 @@ function ProgressReportAudit({ rows }: { rows: Item[] }) {
 
           {!rows.length && (
             <tr>
-              <td
-                colSpan={7}
-                className="px-4 py-10 text-center text-slate-400"
-              >
+              <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
                 No Progress Report audit records match these filters.
               </td>
             </tr>

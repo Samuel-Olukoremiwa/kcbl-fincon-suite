@@ -1,8 +1,11 @@
-import { redirect } from "next/navigation";
 import { UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requirePageAccess } from "@/lib/viewer";
+import { canAccess } from "@/lib/access";
 import CreateUserForm from "./create-user-form";
 import EditUserAccess from "./edit-user-access";
+import ApproveUserButton from "./approve-user-button";
 
 const ROLE_BADGE: Record<string, string> = {
   "Super User": "bg-amber-50 text-amber-600",
@@ -13,31 +16,21 @@ const ROLE_BADGE: Record<string, string> = {
 };
 
 export default async function UsersPage() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("roles(rolename)")
-    .eq("authuserid", user!.id)
-    .single();
-
-  const roleName = (profile?.roles as unknown as { rolename: string } | null)?.rolename;
-
-  // Page-level gate. The real enforcement is still the RLS policies and
-  // the API route's own check (see app/api/users/create/route.ts) — this
-  // redirect just avoids showing the form to someone who'd be blocked by
-  // the database anyway.
-  if (roleName !== "Super User") {
-    redirect("/dashboard");
-  }
+  const viewer = await requirePageAccess("users");
+  const canCreate = canAccess(viewer, "users", true);
+  const canApprove =
+    viewer.department === "MD Office" || viewer.roleName === "Super User";
+  const canEditAccess = viewer.roleName === "Super User";
+  // Only the approval authority receives the complete request list. Other
+  // permitted departments retain their normal row-level scoped view.
+  const supabase = canApprove ? createAdminClient() : createClient();
 
   const [{ data: users }, { data: roles }, { data: projects }] =
     await Promise.all([
       supabase
         .from("users")
         .select(
-          "userid, fullname, email, usertype, status, department, accesslevel, roleid, roles(rolename)"
+          "userid, fullname, email, usertype, status, department, accesslevel, roleid, roles(rolename)",
         )
         .order("userid"),
 
@@ -58,16 +51,22 @@ export default async function UsersPage() {
         <div>
           <h1 className="text-xl font-semibold text-ink">User Management</h1>
           <p className="text-sm text-slate-500">
-            Create Staff and Client accounts, and assign their roles.
+            Submit staff-user requests and manage their approval status.
           </p>
         </div>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[380px_1fr]">
-        <div className="card p-6">
-          <h2 className="mb-4 text-sm font-semibold text-ink">Create a new user</h2>
-          <CreateUserForm projects={projects ?? []} />
-        </div>
+      <div
+        className={`mt-8 grid gap-6 ${canCreate ? "lg:grid-cols-[380px_1fr]" : "grid-cols-1"}`}
+      >
+        {canCreate && (
+          <div className="card p-6">
+            <h2 className="mb-4 text-sm font-semibold text-ink">
+              Create a new user
+            </h2>
+            <CreateUserForm projects={projects ?? []} />
+          </div>
+        )}
 
         <div className="card overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -83,7 +82,9 @@ export default async function UsersPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {users?.map((u) => {
-                const roleLabel = (u.roles as unknown as { rolename: string } | null)?.rolename ?? "—";
+                const roleLabel =
+                  (u.roles as unknown as { rolename: string } | null)
+                    ?.rolename ?? "—";
                 const initials = u.fullname
                   .split(" ")
                   .map((s: string) => s[0])
@@ -99,8 +100,12 @@ export default async function UsersPage() {
                           {initials}
                         </div>
                         <div>
-                          <div className="font-medium text-ink">{u.fullname}</div>
-                          <div className="text-xs text-slate-400">{u.userid}</div>
+                          <div className="font-medium text-ink">
+                            {u.fullname}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {u.userid}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -110,7 +115,8 @@ export default async function UsersPage() {
                       <span
                         className={
                           "rounded-full px-2.5 py-0.5 text-xs font-medium " +
-                          (ROLE_BADGE[roleLabel] ?? "bg-slate-100 text-slate-600")
+                          (ROLE_BADGE[roleLabel] ??
+                            "bg-slate-100 text-slate-600")
                         }
                       >
                         {roleLabel}
@@ -128,28 +134,40 @@ export default async function UsersPage() {
                         <span
                           className={
                             "h-1.5 w-1.5 rounded-full " +
-                            (u.status === "Active" ? "bg-green-500" : "bg-slate-400")
+                            (u.status === "Active"
+                              ? "bg-green-500"
+                              : "bg-slate-400")
                           }
                         />
                         {u.status}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <EditUserAccess
-                        userid={u.userid}
-                        currentRoleId={u.roleid}
-                        currentRoleName={roleLabel}
-                        currentDepartment={u.department}
-                        currentAccessLevel={u.accesslevel}
-                        roleOptions={roles ?? []}
-                      />
+                      <div className="flex flex-wrap gap-2">
+                        {canApprove && u.status === "Pending" && (
+                          <ApproveUserButton userid={u.userid} />
+                        )}
+                        {canEditAccess && (
+                          <EditUserAccess
+                            userid={u.userid}
+                            currentRoleId={u.roleid}
+                            currentRoleName={roleLabel}
+                            currentDepartment={u.department}
+                            currentAccessLevel={u.accesslevel}
+                            roleOptions={roles ?? []}
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
               })}
               {!users?.length && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                  <td
+                    colSpan={6}
+                    className="px-4 py-8 text-center text-slate-400"
+                  >
                     No users yet.
                   </td>
                 </tr>

@@ -1,5 +1,5 @@
 {
   "crons": [
-    { "path": "/api/cron/monthly-project-reports", "schedule": "0 7 * * *" }
+    { "path": "/api/cron/weekly-progress-reports", "schedule": "0 7 * * *" }
   ]
 }
