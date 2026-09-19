@@ -38,6 +38,11 @@ type Report = {
   authorizer?: { fullname: string } | null;
 };
 
+type ReviewValues = {
+  progress: string;
+  comments: string;
+};
+
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 function localDateValue(date: Date) {
@@ -126,6 +131,7 @@ export default function ReportWorkspace({
   const [file, setFile] = useState<File | null>(null);
 
   const [query, setQuery] = useState("");
+
   const [statusFilter, setStatusFilter] =
     useState("All statuses");
 
@@ -138,15 +144,8 @@ export default function ReportWorkspace({
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const [reviewValues, setReviewValues] = useState<
-    Record<
-      number,
-      {
-        progress: string;
-        comments: string;
-      }
-    >
-  >({});
+  const [reviewValues, setReviewValues] =
+    useState<Record<number, ReviewValues>>({});
 
   const [authorizeReasons, setAuthorizeReasons] =
     useState<Record<number, string>>({});
@@ -249,8 +248,7 @@ export default function ReportWorkspace({
 
       const matchesStatus =
         statusFilter === "All statuses" ||
-        report.projects?.status ===
-          statusFilter;
+        report.projects?.status === statusFilter;
 
       const matchesWeek =
         weekFilter === "All weeks" ||
@@ -259,8 +257,7 @@ export default function ReportWorkspace({
       const matchesRequestStatus =
         reviewStatusFilter ===
           "All request statuses" ||
-        (report.reviewstatus ??
-          "Submitted") ===
+        (report.reviewstatus ?? "Submitted") ===
           reviewStatusFilter;
 
       const uploadedDate =
@@ -290,9 +287,16 @@ export default function ReportWorkspace({
   ]);
 
   const groupedReports = useMemo(() => {
-    return filteredReports.reduce<
+    const statusPriority: Record<string, number> = {
+      Submitted: 0,
+      Reviewed: 1,
+      Rejected: 2,
+      Authorized: 3,
+    };
+
+    const groups = filteredReports.reduce<
       Record<string, Report[]>
-    >((groups, report) => {
+    >((acc, report) => {
       const client =
         report.projects?.clients
           ?.fullnameorcompanyname ??
@@ -307,14 +311,41 @@ export default function ReportWorkspace({
 
       const key = `${client}|||${project}|||${status}`;
 
-      if (!groups[key]) {
-        groups[key] = [];
+      if (!acc[key]) {
+        acc[key] = [];
       }
 
-      groups[key].push(report);
+      acc[key].push(report);
 
-      return groups;
+      return acc;
     }, {});
+
+    // Reports awaiting action (Submitted, then Reviewed)
+    // surface first within each group.
+    Object.values(groups).forEach((group) => {
+      group.sort((a, b) => {
+        const aPriority =
+          statusPriority[
+            a.reviewstatus ?? "Submitted"
+          ] ?? 0;
+
+        const bPriority =
+          statusPriority[
+            b.reviewstatus ?? "Submitted"
+          ] ?? 0;
+
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+
+        return (
+          new Date(b.uploadedat).getTime() -
+          new Date(a.uploadedat).getTime()
+        );
+      });
+    });
+
+    return groups;
   }, [filteredReports]);
 
   async function upload(
@@ -637,10 +668,10 @@ export default function ReportWorkspace({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            PDF only, maximum 100 MB. The
-            client is notified only after
-            supervisor review and MD Office
-            authorization are complete.
+            PDF only, maximum 100 MB. The client
+            is notified only after supervisor
+            review and MD Office authorization
+            are complete.
           </p>
 
           <form
@@ -776,6 +807,7 @@ export default function ReportWorkspace({
               (status) => (
                 <option
                   key={status}
+                  value={status}
                 >
                   {status}
                 </option>
