@@ -4,4 +4,38 @@ import { requirePageAccess } from "@/lib/viewer";
 import PartnerForm from "./partner-form";
 import PartnerDirectory from "./partner-directory";
 import { canAccess } from "@/lib/access";
-export default async function PartnersPage() { const viewer=await requirePageAccess("suppliers"); const s = createClient(); const [{ data: suppliers }, { data: subcontractors }] = await Promise.all([s.from("suppliers").select("supplierid,suppliername,supplycategory,phonenumber,email,address,status").order("supplierid", { ascending: false }), s.from("subcontractors").select("subcontractorid,subcontractorname,tradespecialty,phonenumber,email,address,status").order("subcontractorid", { ascending: false })]); const rows = [...(suppliers ?? []).map(x => ({ ...x, id: x.supplierid, name: x.suppliername, category: x.supplycategory, kind: "Supplier" })), ...(subcontractors ?? []).map(x => ({ ...x, id: x.subcontractorid, name: x.subcontractorname, category: x.tradespecialty, kind: "Subcontractor" }))].sort((a, b) => a.id.localeCompare(b.id)); const canCreate=canAccess(viewer,"suppliers",true); return <div><header className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white"><BriefcaseBusiness size={20}/></div><div><h1 className="text-xl font-semibold">Suppliers & subcontractors</h1><p className="text-sm text-slate-500">One directory of all external partners, identified by type.</p></div></header><div className={`mt-8 grid gap-6 ${canCreate?"xl:grid-cols-[400px_1fr]":""}`}>{canCreate&&<div className="card p-6"><PartnerForm kind="supplier" existingIds={suppliers?.map(x => x.supplierid)}/><div className="my-6 border-t"/><PartnerForm kind="subcontractor" existingIds={subcontractors?.map(x => x.subcontractorid)}/></div>}<PartnerDirectory rows={rows}/></div></div>; }
+
+export default async function PartnersPage() {
+  const viewer = await requirePageAccess("suppliers");
+  const s = createClient();
+  const [{ data: suppliers }, { data: subcontractors }] = await Promise.all([
+    s.from("suppliers").select("supplierid,suppliername,supplycategory,phonenumber,email,address,description,status").order("supplierid", { ascending: false }),
+    s.from("subcontractors").select("subcontractorid,subcontractorname,tradespecialty,phonenumber,email,address,description,status").order("subcontractorid", { ascending: false }),
+  ]);
+  const rows = [
+    ...(suppliers ?? []).map((x) => ({ ...x, id: x.supplierid, name: x.suppliername, category: x.supplycategory, kind: "Supplier" })),
+    ...(subcontractors ?? []).map((x) => ({ ...x, id: x.subcontractorid, name: x.subcontractorname, category: x.tradespecialty, kind: "Subcontractor" })),
+  ].sort((a, b) => a.id.localeCompare(b.id));
+  const canCreate = canAccess(viewer, "suppliers", true);
+  return (
+    <div>
+      <header className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white"><BriefcaseBusiness size={20} /></div>
+        <div>
+          <h1 className="text-xl font-semibold">Suppliers & subcontractors</h1>
+          <p className="text-sm text-slate-500">One directory of all external partners, identified by type.</p>
+        </div>
+      </header>
+      <div className={`mt-8 grid gap-6 ${canCreate ? "xl:grid-cols-[400px_1fr]" : ""}`}>
+        {canCreate && (
+          <div className="card p-6">
+            <PartnerForm kind="supplier" existingIds={suppliers?.map((x) => x.supplierid)} />
+            <div className="my-6 border-t" />
+            <PartnerForm kind="subcontractor" existingIds={subcontractors?.map((x) => x.subcontractorid)} />
+          </div>
+        )}
+        <PartnerDirectory rows={rows} />
+      </div>
+    </div>
+  );
+}

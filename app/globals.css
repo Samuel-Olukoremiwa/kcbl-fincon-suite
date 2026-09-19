@@ -96,6 +96,99 @@
   .field-error {
     @apply mt-1 text-xs text-red-600;
   }
+
+  /* Metric/stat cards: a single-pixel top rule ties them to the brand
+     without touching the card's existing white/border look. */
+  .card-metric {
+    @apply card relative overflow-hidden p-5;
+  }
+  .card-metric::before {
+    content: "";
+    @apply absolute inset-x-0 top-0 h-[3px] bg-navy;
+  }
+  .card-metric.card-metric--danger::before {
+    @apply bg-red-600;
+  }
+
+  /* Section header: small caps label with a short accent rule instead of
+     just floating gray text above content. */
+  .section-header {
+    @apply flex items-center gap-2;
+  }
+  .section-header::before {
+    content: "";
+    @apply h-3.5 w-[3px] rounded-full bg-amber;
+  }
+
+  /* Row hover for list-style content (client tracker, tables). */
+  .row-interactive {
+    @apply transition-colors hover:bg-slate-50;
+  }
+  .dark .row-interactive:hover {
+    background-color: #1e293b;
+  }
+
+  /* Status/role badges — differentiated by semantic color, not just amber
+     everywhere. */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-neutral {
+    @apply badge bg-slate-100 text-ink;
+  }
+  .badge-success {
+    @apply badge bg-green-50 text-green-700;
+  }
+  .badge-warning {
+    @apply badge bg-amber-50 text-amber-700;
+  }
+  .badge-danger {
+    @apply badge bg-red-50 text-red-700;
+  }
+  .badge-brand {
+    @apply badge bg-navy text-white;
+  }
+
+  /* Sidebar section labels (Overview / Operations / Admin). */
+  .nav-group-label {
+    @apply px-2.5 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35;
+  }
+}
+
+@layer utilities {
+  .bg-blueprint-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+}
+
+@keyframes glow-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(24px, -18px) scale(1.08);
+  }
+}
+.animate-glow-drift {
+  animation: glow-drift 14s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.6s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {

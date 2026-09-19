@@ -15,8 +15,21 @@ export async function POST(request: Request) {
   const idColumn = kind === "supplier" ? "supplierid" : "subcontractorid";
   const { data: existing } = await supabase.from(table).select(idColumn);
   const id = nextPrefixedId((existing ?? []).map((x: any) => x[idColumn]), kind === "supplier" ? "SUP" : "SUB", 5);
-  const base = { contactperson: body.contact || null, phonenumber: body.phone, email: body.email || null, address: body.address, bankaccountname: body.accountName, bankaccountnumber: body.accountNumber, bankname: body.bank, status: body.status, datecreated: new Date().toISOString().slice(0, 10) };
-  const { error } = kind === "supplier" ? await supabase.from("suppliers").insert({ supplierid: id, suppliername: body.name, supplycategory: body.specialty, ...base }) : await supabase.from("subcontractors").insert({ subcontractorid: id, subcontractorname: body.name, tradespecialty: body.specialty, ...base });
+  const base = {
+    contactperson: body.contact || null,
+    phonenumber: body.phone,
+    email: body.email || null,
+    address: body.address,
+    description: body.description || null,
+    bankaccountname: body.accountName,
+    bankaccountnumber: body.accountNumber,
+    bankname: body.bank,
+    status: body.status,
+    datecreated: new Date().toISOString().slice(0, 10),
+  };
+  const { error } = kind === "supplier"
+    ? await supabase.from("suppliers").insert({ supplierid: id, suppliername: body.name, supplycategory: body.specialty, ...base })
+    : await supabase.from("subcontractors").insert({ subcontractorid: id, subcontractorname: body.name, tradespecialty: body.specialty, ...base });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   await supabase.from("makercheckerauditlog").insert({
     logid: `LOG${Date.now().toString().slice(-9)}`,

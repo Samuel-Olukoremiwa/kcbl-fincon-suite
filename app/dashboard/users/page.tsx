@@ -6,13 +6,14 @@ import { canAccess } from "@/lib/access";
 import CreateUserForm from "./create-user-form";
 import EditUserAccess from "./edit-user-access";
 import ApproveUserButton from "./approve-user-button";
+import PageHeader from "../page-header";
 
 const ROLE_BADGE: Record<string, string> = {
-  "Super User": "bg-amber-50 text-amber-600",
-  Initiator: "bg-navy-50 text-navy",
-  Authorizer: "bg-navy-50 text-navy",
-  Client: "bg-slate-100 text-slate-600",
-  Viewer: "bg-slate-100 text-slate-600",
+  "Super User": "badge-brand",
+  Initiator: "badge bg-navy-50 text-navy",
+  Authorizer: "badge bg-navy-50 text-navy",
+  Client: "badge-neutral",
+  Viewer: "badge-neutral",
 };
 
 export default async function UsersPage() {
@@ -44,17 +45,11 @@ export default async function UsersPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
-          <UserPlus size={20} strokeWidth={1.75} />
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-ink">User Management</h1>
-          <p className="text-sm text-slate-500">
-            Submit staff-user requests and manage their approval status.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={UserPlus}
+        title="User Management"
+        description="Submit staff-user requests and manage their approval status."
+      />
 
       <div
         className={`mt-8 grid gap-6 ${canCreate ? "lg:grid-cols-[380px_1fr]" : "grid-cols-1"}`}
@@ -93,7 +88,7 @@ export default async function UsersPage() {
                   .toUpperCase();
 
                 return (
-                  <tr key={u.userid} className="hover:bg-slate-50/60">
+                  <tr key={u.userid} className="row-interactive">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-50 text-xs font-semibold text-navy">
@@ -114,9 +109,7 @@ export default async function UsersPage() {
                     <td className="px-4 py-3">
                       <span
                         className={
-                          "rounded-full px-2.5 py-0.5 text-xs font-medium " +
-                          (ROLE_BADGE[roleLabel] ??
-                            "bg-slate-100 text-slate-600")
+                          ROLE_BADGE[roleLabel] ?? "badge-neutral"
                         }
                       >
                         {roleLabel}
@@ -125,10 +118,10 @@ export default async function UsersPage() {
                     <td className="px-4 py-3">
                       <span
                         className={
-                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium " +
+                          "inline-flex items-center gap-1.5 " +
                           (u.status === "Active"
-                            ? "bg-green-50 text-green-700"
-                            : "bg-slate-100 text-slate-500")
+                            ? "badge-success"
+                            : "badge-neutral")
                         }
                       >
                         <span

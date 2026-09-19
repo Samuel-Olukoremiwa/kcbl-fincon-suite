@@ -6,7 +6,6 @@ import {
   REPORT_BUCKET,
   validReportWeek,
 } from "@/lib/project-reports";
-import { sendProjectReportEmail } from "@/lib/mailer";
 
 export async function POST(request: Request) {
   const viewer = await getViewer();
@@ -74,48 +73,16 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  // Send immediately after the metadata is committed, so a failed email never
-  // loses an uploaded report. The notification log prevents the scheduler
-  // from sending a duplicate message later.
-  const { data: project } = await admin
-    .from("projects")
-    .select("projecttitle,clients!inner(fullnameorcompanyname,email)")
-    .eq("projectid", projectid)
-    .maybeSingle();
-  const client = project?.clients as unknown as {
-    fullnameorcompanyname: string;
-    email: string | null;
-  } | null;
-  const notificationKey = `CLIENT_REPORT_AVAILABLE:${report.reportid}`;
-  let emailSent = false;
-  if (client?.email) {
-    const result = await sendProjectReportEmail({
-      to: client.email,
-      subject: `Your project report is available: ${project?.projecttitle ?? projectid}`,
-      html: `<p>Hello ${client.fullnameorcompanyname},</p><p>Your weekly Progress Report for <strong>${project?.projecttitle ?? projectid}</strong> is now available in your secure FinCon Suite project portal.</p><p>Please sign in to view or download the PDF.</p>`,
-    });
-    emailSent = result.sent;
-    if (result.sent) {
-      await admin.from("projectreportnotifications").insert({
-        notificationkey: notificationKey,
-        eventtype: "CLIENT_REPORT_AVAILABLE",
-        reportweek,
-        reportid: report.reportid,
-        recipientemail: client.email,
-      });
-      await admin
-        .from("projectreports")
-        .update({ clientnotifiedat: new Date().toISOString() })
-        .eq("reportid", report.reportid);
-    }
-  }
+
+  // The client is no longer notified here. A report at this stage has not
+  // been reviewed by a supervisor or authorized by MD Office — it may still
+  // be rejected at either stage. The client-notification email now fires
+  // only on Authorization, in app/api/project-reports/[id]/authorize/route.ts.
+
   return NextResponse.json(
     {
       ok: true,
-      emailSent,
-      emailMessage: emailSent
-        ? "Client notified immediately."
-        : "Report uploaded. Client email could not be sent; verify the client email and Resend setup.",
+      emailMessage: "Report uploaded and sent for supervisor review.",
     },
     { status: 201 },
   );

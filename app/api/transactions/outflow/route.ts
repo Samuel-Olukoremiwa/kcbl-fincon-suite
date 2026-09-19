@@ -19,7 +19,12 @@ export async function POST(request: Request) {
   }
   const supabase = createClient();
   const { data: project } = await supabase.from("projects").select("status").eq("projectid", body.projectid).single();
-  if (project?.status === "Pending") return NextResponse.json({ error: "Pending projects do not accept expenditure requests." }, { status: 400 });
+
+  // Pending projects no longer block the request outright — it now goes
+  // through to the approval queue, flagged in the audit trail, where an
+  // Authorizer/MD/Super User can approve it via an explicit override.
+  const isPendingProject = project?.status === "Pending";
+
   const { data: existing } = await supabase.from("cashoutflowexpenditure").select("transactionid");
   const id = nextPrefixedId((existing ?? []).map((x) => x.transactionid), "OUT", 9);
 
@@ -46,7 +51,10 @@ export async function POST(request: Request) {
     actionbyuserid: viewer.userId,
     actiondate: new Date().toISOString().slice(0, 10),
     actiontime: new Date().toTimeString().slice(0, 8),
+    comments: isPendingProject
+      ? "Submitted against a project with Pending status. Approval will require an explicit override."
+      : null,
   });
 
-  return NextResponse.json({ transactionid: id });
+  return NextResponse.json({ transactionid: id, projectPending: isPendingProject });
 }

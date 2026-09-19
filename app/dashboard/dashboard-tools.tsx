@@ -66,6 +66,9 @@ export default function DashboardTools({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
   const allowed = useMemo(
     () =>
       pages.filter(
@@ -95,31 +98,43 @@ export default function DashboardTools({
           role="dialog"
           aria-modal="true"
           aria-label="Site search"
+          onClick={() => setOpen(false)}
         >
-          <div className="w-full max-w-lg rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900">
+          <div
+            className="w-full max-w-lg rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center gap-2">
-              <Search size={18} />
+              <Search size={18} className="text-slate-500 dark:text-slate-400" />
               <input
                 autoFocus
-                className="w-full bg-transparent py-2 outline-none"
+                className="w-full bg-transparent py-2 text-ink outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search available pages…"
               />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Close search"
+              >
+                Esc
+              </button>
             </div>
-            <div className="mt-3 border-t pt-2">
+            <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
               {allowed.map((page) => (
                 <Link
                   key={page.href}
                   href={page.href}
                   onClick={() => setOpen(false)}
-                  className="block rounded px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="block rounded px-3 py-2 text-sm text-ink hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   {page.label}
                 </Link>
               ))}
               {!allowed.length && (
-                <p className="px-3 py-4 text-sm text-slate-500">
+                <p className="px-3 py-4 text-sm text-slate-500 dark:text-slate-400">
                   No available pages match.
                 </p>
               )}

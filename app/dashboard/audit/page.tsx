@@ -3,14 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePageAccess } from "@/lib/viewer";
 import { canViewFinancialRecords } from "@/lib/access";
 import AuditWorkspace from "./audit-workspace";
+import PageHeader from "../page-header";
 
 export default async function AuditPage() {
   const viewer = await requirePageAccess("audit");
   const canViewFinancial = canViewFinancialRecords(viewer);
 
-  // The page guard above authorizes Audit Trail access. Use the server admin
-  // client for the read so report history is not silently removed by the
-  // storage/report RLS policies that apply to the browser session.
   const supabase = createAdminClient();
 
   const [
@@ -92,6 +90,8 @@ export default async function AuditPage() {
         entry.actiontype === "Approved" || entry.actiontype === "Rejected",
     );
 
+    const overridden = entries.find((entry) => entry.actiontype === "Overridden");
+
     return {
       id: transaction.transactionid,
       direction: transaction.direction,
@@ -110,6 +110,11 @@ export default async function AuditPage() {
       authorizedDate: authorized?.actiondate ?? transaction.approvaldate,
       authorizedTime: authorized?.actiontime ?? null,
       status: transaction.approvalstatus,
+      overridden: Boolean(overridden),
+      overrideReason: overridden?.comments ?? null,
+      overrideBy: overridden
+        ? (userNames.get(overridden.actionbyuserid) ?? overridden.actionbyuserid)
+        : null,
     };
   });
 
@@ -152,18 +157,11 @@ export default async function AuditPage() {
 
   return (
     <div>
-      <header className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
-          <Landmark size={20} />
-        </div>
-
-        <div>
-          <h1 className="text-xl font-semibold">Audit Trail</h1>
-          <p className="text-sm text-slate-500">
-            Transaction, record, and Progress Report history.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        icon={Landmark}
+        title="Audit Trail"
+        description="Transaction, record, and Progress Report history."
+      />
 
       <AuditWorkspace
         transactions={transactions}

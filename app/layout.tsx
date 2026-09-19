@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import CookieConsent from "./cookie-consent";
-import ThemeToggle from "./theme-toggle";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -33,9 +32,6 @@ export default function RootLayout({
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
-        <div className="fixed right-4 top-4 z-30 md:hidden">
-          <ThemeToggle />
-        </div>
         {children}
         <CookieConsent />
       </body>

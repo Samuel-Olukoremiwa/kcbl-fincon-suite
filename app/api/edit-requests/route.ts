@@ -5,8 +5,8 @@ import { requireStaff } from "@/lib/viewer";
 const EDITABLE_FIELDS: Record<string, string[]> = {
   user: ["roleid", "department", "accesslevel"],
   client: ["email", "address", "idtype", "idnumber", "issuingauthority", "idexpirydate"],
-  supplier: ["phonenumber", "email", "address"],
-  subcontractor: ["phonenumber", "email", "address"],
+  supplier: ["phonenumber", "email", "address", "supplycategory", "description"],
+  subcontractor: ["phonenumber", "email", "address", "tradespecialty", "description"],
 };
 
 const TABLE_NAME: Record<string, string> = {

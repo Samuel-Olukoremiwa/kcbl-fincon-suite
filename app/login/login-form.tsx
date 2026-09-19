@@ -80,11 +80,13 @@ export default function LoginForm() {
             placeholder="you@kcbl.com"
           />
         </div>
+      </div>
 
-        <div className="mb-6">
-          <label htmlFor="password" className="field-label">
-            Password
-          </label>
+      <div className="mb-6">
+        <label htmlFor="password" className="field-label">
+          Password
+        </label>
+        <div className="relative">
           <input
             id="password"
             type={showPassword ? "text" : "password"}

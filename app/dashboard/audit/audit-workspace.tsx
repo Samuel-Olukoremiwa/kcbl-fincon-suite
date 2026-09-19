@@ -5,6 +5,14 @@ import { date, money } from "@/lib/client-utils";
 
 type Item = Record<string, any>;
 
+function statusBadgeClass(status: string) {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("approv") || s.includes("authoriz")) return "badge-success";
+  if (s.includes("reject")) return "badge-danger";
+  if (s.includes("pending") || s.includes("awaiting") || s.includes("review")) return "badge-warning";
+  return "badge-neutral";
+}
+
 function formatDateTime(
   value: string | null | undefined,
   time?: string | null,
@@ -196,7 +204,7 @@ function TransactionGroup({
 
         <tbody className="divide-y divide-slate-100">
           {rows.map((row) => (
-            <tr key={row.id}>
+            <tr key={row.id} className="row-interactive">
               <td className="px-4 py-3">
                 <b>{row.id}</b>
                 <span className="block text-xs text-slate-500">
@@ -228,9 +236,28 @@ function TransactionGroup({
               </td>
 
               <td className="px-4 py-3">
-                <span className="rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">
-                  {row.status}
-                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={statusBadgeClass(row.status)}>
+                    {row.status}
+                  </span>
+                  {row.overridden && (
+                    <span
+                      className="badge-danger"
+                      title={
+                        row.overrideReason
+                          ? `${row.overrideBy ?? "Unknown"}: ${row.overrideReason}`
+                          : undefined
+                      }
+                    >
+                      Overridden
+                    </span>
+                  )}
+                </div>
+                {row.overridden && row.overrideReason && (
+                  <p className="mt-1 max-w-xs text-xs text-slate-500">
+                    {row.overrideReason}
+                  </p>
+                )}
               </td>
             </tr>
           ))}
@@ -271,12 +298,12 @@ function RecordAudit({ rows }: { rows: Item[] }) {
 
         <tbody className="divide-y divide-slate-100">
           {rows.map((row) => (
-            <tr key={row.logid}>
+            <tr key={row.logid} className="row-interactive">
               <td className="px-4 py-3">
                 <b>{row.id}</b>
               </td>
 
-              <td className="px-4 py-3">{row.type}</td>
+              <td className="px-4 py-3"><span className="badge-neutral">{row.type}</span></td>
               <td className="px-4 py-3">{row.userName}</td>
 
               <td className="px-4 py-3 text-xs">
@@ -328,7 +355,7 @@ function ProgressReportAudit({ rows }: { rows: Item[] }) {
 
         <tbody className="divide-y divide-slate-100">
           {rows.map((row) => (
-            <tr key={row.id}>
+            <tr key={row.id} className="row-interactive">
               <td className="px-4 py-3">
                 <b>{row.projectName}</b>
                 <span className="block text-xs text-slate-500">
@@ -363,7 +390,7 @@ function ProgressReportAudit({ rows }: { rows: Item[] }) {
               </td>
 
               <td className="px-4 py-3">
-                <span className="rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">
+                <span className={statusBadgeClass(row.status)}>
                   {row.status}
                 </span>
               </td>
