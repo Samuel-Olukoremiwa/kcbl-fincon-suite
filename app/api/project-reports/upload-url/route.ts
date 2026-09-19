@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       .select("reportid")
       .eq("projectid", projectid)
       .eq("reportweek", reportweek)
+      .neq("reviewstatus", "Rejected")
       .maybeSingle(),
   ]);
   if (!project)
@@ -68,7 +69,10 @@ export async function POST(request: Request) {
     );
   if (existing)
     return NextResponse.json(
-      { error: "A report for this project and week already exists." },
+      {
+        error:
+          "A report for this project and week is already awaiting review or has been authorized. If it was rejected, you can resubmit for that week.",
+      },
       { status: 409 },
     );
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");

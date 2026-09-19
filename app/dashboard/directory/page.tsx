@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { requirePageAccess } from "@/lib/viewer";
 import { canViewFinancialRecords } from "@/lib/access";
 import DirectoryWorkspace from "./directory-workspace";
+
+export const dynamic = "force-dynamic";
+
 export default async function DirectoryPage() {
   const viewer = await requirePageAccess("projects");
   const s = createClient();
@@ -41,6 +44,26 @@ export default async function DirectoryPage() {
         all[row.projectid] = (all[row.projectid] ?? 0) + Number(row.amount);
       return all;
     }, {});
+
+  // Same latest-authorized-week logic as Projects — a client with several
+  // projects gets a progress figure per project, never averaged.
+  const { data: authorizedReports } = await s
+    .from("projectreports")
+    .select("projectid,reportweek,progresspct")
+    .eq("reviewstatus", "Authorized")
+    .not("progresspct", "is", null)
+    .order("reportweek", { ascending: false });
+
+  const progressByProject: Record<string, { pct: number; week: string }> = {};
+  (authorizedReports ?? []).forEach((report) => {
+    if (!progressByProject[report.projectid]) {
+      progressByProject[report.projectid] = {
+        pct: Number(report.progresspct),
+        week: report.reportweek,
+      };
+    }
+  });
+
   return (
     <div>
       <header className="flex items-center gap-3">
@@ -63,6 +86,7 @@ export default async function DirectoryPage() {
         )}
         inflows={sums(inflows ?? [])}
         outflows={sums(outflows ?? [])}
+        progress={progressByProject}
         canViewFinancial={canViewFinancial}
       />
     </div>

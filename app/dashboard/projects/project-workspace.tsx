@@ -8,6 +8,29 @@ import { date, money } from "@/lib/client-utils";
 type Item = Record<string, any>;
 const STATUSES = ["Ongoing", "Completed", "On Hold", "Pending"];
 
+function weekLabel(value: string) {
+  const start = new Date(`${value}T00:00:00`);
+  return start.toLocaleDateString("en-NG", { day: "numeric", month: "short" });
+}
+
+function ProgressCell({
+  progress,
+}: {
+  progress: { pct: number; week: string } | null;
+}) {
+  if (!progress) {
+    return <span className="text-xs text-slate-400">No authorized report</span>;
+  }
+  return (
+    <div>
+      <span className="font-medium text-ink">{progress.pct}%</span>
+      <span className="block text-xs text-slate-400">
+        Week of {weekLabel(progress.week)}
+      </span>
+    </div>
+  );
+}
+
 export default function ProjectWorkspace({
   projects,
   clients,
@@ -129,6 +152,7 @@ export default function ProjectWorkspace({
                       <tr>
                         <th className="px-4 py-3">Project</th>
                         <th className="px-4 py-3">Value</th>
+                        <th className="px-4 py-3">Progress</th>
                         <th className="px-4 py-3">Approved inflow</th>
                         <th className="px-4 py-3">Approved expenditure</th>
                         <th className="px-4 py-3">Cash position</th>
@@ -153,6 +177,9 @@ export default function ProjectWorkspace({
                               ) : (
                                 <RestrictedValue />
                               )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <ProgressCell progress={project.progress} />
                             </td>
                             {!canViewFinancial ? (
                               <td colSpan={3} className="px-4 py-3">

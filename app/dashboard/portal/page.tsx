@@ -1,3 +1,318 @@
-import { redirect } from "next/navigation";import {createClient} from "@/lib/supabase/server";import {getViewer} from "@/lib/viewer";import {money,date} from "@/lib/client-utils";import {FileText,FolderOpen,ReceiptText} from "lucide-react";
-export default async function PortalPage(){const viewer=await getViewer();if(viewer.userType!=="Client")redirect("/dashboard");const s=createClient();const[{data:client},{data:projects},{data:inflows},{data:documents}]=await Promise.all([s.from("clients").select("clientid,fullnameorcompanyname,email,phonenumber,address,preferredpaymentmethod").single(),s.from("projects").select("projectid,projecttitle,projectlocation,projecttype,estimatedvalue,startdate,expectedenddate,status").order("projectid"),s.from("cashinflowreceivables").select("transactionid,projectid,amount,transactiondate,paymentmethod,description,approvalstatus").order("transactiondate",{ascending:false}),s.from("documents").select("documentid,documenttype,filename,filepath,uploaddate").order("uploaddate",{ascending:false})]);return <div><p className="section-title">Client portal</p><h1 className="mt-1 text-2xl font-semibold">Welcome, {client?.fullnameorcompanyname??viewer.fullName}</h1><p className="mt-1 text-sm text-slate-500">Approved project and payment information for your account.</p><div className="mt-7 grid gap-5 md:grid-cols-3"><Card icon={FolderOpen} label="Projects" value={String(projects?.length??0)}/><Card icon={ReceiptText} label="Payments recorded" value={money(inflows?.reduce((n,x)=>n+Number(x.amount),0))}/><Card icon={FileText} label="Available documents" value={String(documents?.length??0)}/></div><div className="mt-7 grid gap-6 xl:grid-cols-2"><section className="card overflow-hidden"><div className="border-b p-5"><h2 className="font-semibold">My projects</h2></div><div className="divide-y">{projects?.map(p=><div key={p.projectid} className="p-5"><div className="flex justify-between gap-3"><div><b>{p.projecttitle}</b><p className="mt-1 text-sm text-slate-500">{p.projectlocation} · {p.projecttype}</p></div><span className="h-fit rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">{p.status}</span></div><p className="mt-3 text-sm">Contract value: <b>{money(p.estimatedvalue)}</b></p><p className="text-xs text-slate-500">{date(p.startdate)} to {date(p.expectedenddate)}</p></div>)}{!projects?.length&&<p className="p-8 text-center text-slate-400">No projects are currently assigned.</p>}</div></section><section className="card overflow-hidden"><div className="border-b p-5"><h2 className="font-semibold">Payment history</h2></div><div className="divide-y">{inflows?.map(i=><div key={i.transactionid} className="flex justify-between gap-4 p-5"><div><b>{i.transactionid}</b><p className="text-sm text-slate-500">{date(i.transactiondate)} · {i.paymentmethod}</p><p className="text-xs text-slate-400">{i.description}</p></div><div className="text-right"><b>{money(i.amount)}</b><p className="mt-1 text-xs text-slate-500">{i.approvalstatus}</p></div></div>)}{!inflows?.length&&<p className="p-8 text-center text-slate-400">No payments recorded.</p>}</div></section></div><section className="card mt-6 overflow-hidden"><div className="border-b p-5"><h2 className="font-semibold">Documents</h2><p className="text-sm text-slate-500">Documents made available for your client account and projects.</p></div><div className="divide-y">{documents?.map(d=><a key={d.documentid} href={d.filepath} target="_blank" className="flex items-center justify-between p-4 hover:bg-slate-50"><span><b>{d.filename}</b><span className="ml-2 text-xs text-slate-400">{d.documenttype} · {date(d.uploaddate)}</span></span><span className="text-sm font-medium text-navy">Open</span></a>)}{!documents?.length&&<p className="p-8 text-center text-slate-400">No documents available.</p>}</div></section></div>}
-function Card({icon:Icon,label,value}:{icon:React.ElementType;label:string;value:string}){return <div className="card p-5"><Icon className="text-navy" size={21}/><p className="mt-4 text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div>}
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getViewer } from "@/lib/viewer";
+import { money, date } from "@/lib/client-utils";
+import { FileText, FolderOpen, ReceiptText } from "lucide-react";
+
+export const dynamic = "force-dynamic";
+
+function weekLabel(value: string) {
+  const start = new Date(`${value}T00:00:00`);
+
+  return start.toLocaleDateString("en-NG", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+export default async function PortalPage() {
+  const viewer = await getViewer();
+
+  if (viewer.userType !== "Client") {
+    redirect("/dashboard");
+  }
+
+  const s = createClient();
+
+  const [
+    { data: client },
+    { data: projects },
+    { data: inflows },
+    { data: documents },
+  ] = await Promise.all([
+    s
+      .from("clients")
+      .select(
+        "clientid,fullnameorcompanyname,email,phonenumber,address,preferredpaymentmethod",
+      )
+      .single(),
+
+    s
+      .from("projects")
+      .select(
+        "projectid,projecttitle,projectlocation,projecttype,estimatedvalue,startdate,expectedenddate,status",
+      )
+      .order("projectid"),
+
+    s
+      .from("cashinflowreceivables")
+      .select(
+        "transactionid,projectid,amount,transactiondate,paymentmethod,description,approvalstatus",
+      )
+      .order("transactiondate", { ascending: false }),
+
+    s
+      .from("documents")
+      .select(
+        "documentid,documenttype,filename,filepath,uploaddate",
+      )
+      .order("uploaddate", { ascending: false }),
+  ]);
+
+  /*
+   * Only AUTHORIZED progress reports are allowed to affect
+   * the progress displayed to the client.
+   *
+   * Example:
+   *
+   * Week 1 -> Authorized -> 30%
+   * Week 2 -> Submitted  -> still 30%
+   * Week 2 -> Reviewed   -> still 30%
+   * Week 2 -> Rejected   -> still 30%
+   * Week 2 -> Authorized -> now 55%
+   *
+   * Reports are ordered newest-first, so the first authorized
+   * report for each project is the latest authorized progress.
+   */
+  const {
+    data: authorizedReports,
+    error: authorizedReportsError,
+  } = await s
+    .from("projectreports")
+    .select("projectid,reportweek,progresspct")
+    .eq("reviewstatus", "Authorized")
+    .not("progresspct", "is", null)
+    .order("reportweek", { ascending: false });
+
+ if (authorizedReportsError) {
+  console.error(
+    "Failed to load authorized project reports:",
+    authorizedReportsError,
+  );
+}
+
+console.log("AUTHORIZED REPORTS:", authorizedReports);
+
+  const progressByProject = new Map<
+    string,
+    {
+      pct: number;
+      week: string;
+    }
+  >();
+
+  (authorizedReports ?? []).forEach((report) => {
+    if (!progressByProject.has(report.projectid)) {
+      progressByProject.set(report.projectid, {
+        pct: Number(report.progresspct),
+        week: report.reportweek,
+      });
+    }
+  });
+
+  return (
+    <div>
+      <p className="section-title">Client portal</p>
+
+      <h1 className="mt-1 text-2xl font-semibold">
+        Welcome, {client?.fullnameorcompanyname ?? viewer.fullName}
+      </h1>
+
+      <p className="mt-1 text-sm text-slate-500">
+        Approved project and payment information for your account.
+      </p>
+
+      <div className="mt-7 grid gap-5 md:grid-cols-3">
+        <Card
+          icon={FolderOpen}
+          label="Projects"
+          value={String(projects?.length ?? 0)}
+        />
+
+        <Card
+          icon={ReceiptText}
+          label="Payments recorded"
+          value={money(
+            inflows?.reduce(
+              (total, item) => total + Number(item.amount),
+              0,
+            ),
+          )}
+        />
+
+        <Card
+          icon={FileText}
+          label="Available documents"
+          value={String(documents?.length ?? 0)}
+        />
+      </div>
+
+      <div className="mt-7 grid gap-6 xl:grid-cols-2">
+        <section className="card overflow-hidden">
+          <div className="border-b p-5">
+            <h2 className="font-semibold">My projects</h2>
+          </div>
+
+          <div className="divide-y">
+            {projects?.map((p) => {
+              const progress =
+                progressByProject.get(p.projectid) ?? null;
+
+              return (
+                <div key={p.projectid} className="p-5">
+                  <div className="flex justify-between gap-3">
+                    <div>
+                      <b>{p.projecttitle}</b>
+
+                      <p className="mt-1 text-sm text-slate-500">
+                        {p.projectlocation} · {p.projecttype}
+                      </p>
+                    </div>
+
+                    <span className="h-fit rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">
+                      {p.status}
+                    </span>
+                  </div>
+
+                  <p className="mt-3 text-sm">
+                    Contract value:{" "}
+                    <b>{money(p.estimatedvalue)}</b>
+                  </p>
+
+                  <p className="mt-1 text-sm">
+                    Progress:{" "}
+                    <b>
+                      {progress
+                        ? `${progress.pct}% (week of ${weekLabel(
+                            progress.week,
+                          )})`
+                        : "Not yet available"}
+                    </b>
+                  </p>
+
+                  <p className="text-xs text-slate-500">
+                    {date(p.startdate)} to{" "}
+                    {date(p.expectedenddate)}
+                  </p>
+                </div>
+              );
+            })}
+
+            {!projects?.length && (
+              <p className="p-8 text-center text-slate-400">
+                No projects are currently assigned.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="card overflow-hidden">
+          <div className="border-b p-5">
+            <h2 className="font-semibold">Payment history</h2>
+          </div>
+
+          <div className="divide-y">
+            {inflows?.map((i) => (
+              <div
+                key={i.transactionid}
+                className="flex justify-between gap-4 p-5"
+              >
+                <div>
+                  <b>{i.transactionid}</b>
+
+                  <p className="text-sm text-slate-500">
+                    {date(i.transactiondate)} ·{" "}
+                    {i.paymentmethod}
+                  </p>
+
+                  <p className="text-xs text-slate-400">
+                    {i.description}
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <b>{money(i.amount)}</b>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    {i.approvalstatus}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {!inflows?.length && (
+              <p className="p-8 text-center text-slate-400">
+                No payments recorded.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <section className="card mt-6 overflow-hidden">
+        <div className="border-b p-5">
+          <h2 className="font-semibold">Documents</h2>
+
+          <p className="text-sm text-slate-500">
+            Documents made available for your client account and
+            projects.
+          </p>
+        </div>
+
+        <div className="divide-y">
+          {documents?.map((d) => (
+            <a
+              key={d.documentid}
+              href={d.filepath}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-4 hover:bg-slate-50"
+            >
+              <span>
+                <b>{d.filename}</b>
+
+                <span className="ml-2 text-xs text-slate-400">
+                  {d.documenttype} · {date(d.uploaddate)}
+                </span>
+              </span>
+
+              <span className="text-sm font-medium text-navy">
+                Open
+              </span>
+            </a>
+          ))}
+
+          {!documents?.length && (
+            <p className="p-8 text-center text-slate-400">
+              No documents available.
+            </p>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Card({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="card p-5">
+      <Icon className="text-navy" size={21} />
+
+      <p className="mt-4 text-sm text-slate-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-2xl font-semibold">
+        {value}
+      </p>
+    </div>
+  );
+}

@@ -2,12 +2,19 @@
 import { useMemo, useState } from "react";
 import { date, money } from "@/lib/client-utils";
 type Item = any;
+
+function weekLabel(value: string) {
+  const start = new Date(`${value}T00:00:00`);
+  return start.toLocaleDateString("en-NG", { day: "numeric", month: "short" });
+}
+
 export default function DirectoryWorkspace({
   clients,
   projects,
   managerNames,
   inflows,
   outflows,
+  progress,
   canViewFinancial,
 }: {
   clients: Item[];
@@ -15,6 +22,7 @@ export default function DirectoryWorkspace({
   managerNames: Record<string, string>;
   inflows: Record<string, number>;
   outflows: Record<string, number>;
+  progress: Record<string, { pct: number; week: string }>;
   canViewFinancial: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -144,6 +152,7 @@ export default function DirectoryWorkspace({
                     }
                     inflow={inflows[project.projectid] ?? 0}
                     outflow={outflows[project.projectid] ?? 0}
+                    progress={progress[project.projectid] ?? null}
                     canViewFinancial={canViewFinancial}
                   />
                 ))}
@@ -165,12 +174,14 @@ function ProjectCard({
   managerName,
   inflow,
   outflow,
+  progress,
   canViewFinancial,
 }: {
   project: Item;
   managerName: string;
   inflow: number;
   outflow: number;
+  progress: { pct: number; week: string } | null;
   canViewFinancial: boolean;
 }) {
   const completed = project.status === "Completed";
@@ -196,6 +207,14 @@ function ProjectCard({
               canViewFinancial ? money(project.estimatedvalue) : "Restricted"
             }
             restricted={!canViewFinancial}
+          />
+          <Detail
+            label="Progress"
+            value={
+              progress
+                ? `${progress.pct}% · Week of ${weekLabel(progress.week)}`
+                : "No authorized report yet"
+            }
           />
           <Detail label="Project manager" value={managerName} />
           <Detail label="Start date" value={date(project.startdate)} />

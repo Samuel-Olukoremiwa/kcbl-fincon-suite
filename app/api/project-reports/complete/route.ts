@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       {
         error:
           error.code === "23505"
-            ? "A report for this project and week already exists."
+            ? "A report for this project and week is already awaiting review or has been authorized. If it was rejected, you can resubmit for that week."
             : error.message,
       },
       { status: 400 },
