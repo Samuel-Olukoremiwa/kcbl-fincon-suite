@@ -9,7 +9,11 @@ import {
 
 export async function POST(request: Request) {
   const viewer = await getViewer();
-  if (viewer.userType !== "Staff" || viewer.department !== "Operations")
+
+  if (
+    viewer.userType !== "Staff" ||
+    viewer.department !== "Operations"
+  ) {
     return NextResponse.json(
       {
         error:
@@ -17,8 +21,16 @@ export async function POST(request: Request) {
       },
       { status: 403 },
     );
-  const { projectid, reportweek, filename, filesize, storagepath } =
-    await request.json();
+  }
+
+  const {
+    projectid,
+    reportweek,
+    filename,
+    filesize,
+    storagepath,
+  } = await request.json();
+
   if (
     !projectid ||
     !validReportWeek(reportweek) ||
@@ -28,14 +40,21 @@ export async function POST(request: Request) {
     filesize < 1 ||
     filesize > MAX_REPORT_BYTES ||
     typeof storagepath !== "string" ||
-    !storagepath.startsWith(`${projectid}/${reportweek}/`)
+    !storagepath.startsWith(
+      `${projectid}/${reportweek}/`,
+    )
   ) {
     return NextResponse.json(
-      { error: "Invalid report upload details." },
+      {
+        error:
+          "Invalid report upload details.",
+      },
       { status: 400 },
     );
   }
+
   const admin = createAdminClient();
+
   const { data: assignment } = await admin
     .from("projectassignments")
     .select("assignmentid")
@@ -44,12 +63,21 @@ export async function POST(request: Request) {
     .eq("approvalstatus", "Approved")
     .eq("active", true)
     .maybeSingle();
-  if (!assignment)
+
+  if (!assignment) {
     return NextResponse.json(
-      { error: "You are not assigned to this project." },
+      {
+        error:
+          "You are not assigned to this project.",
+      },
       { status: 403 },
     );
-  const { data: report, error } = await admin
+  }
+
+  const {
+    data: report,
+    error,
+  } = await admin
     .from("projectreports")
     .insert({
       projectid,
@@ -59,30 +87,29 @@ export async function POST(request: Request) {
       storagepath,
       uploadedbyuserid: viewer.userId,
     })
-    .select("reportid")
+    .select("reportid,updatedat")
     .single();
+
   if (error) {
-    await admin.storage.from(REPORT_BUCKET).remove([storagepath]);
+    await admin.storage
+      .from(REPORT_BUCKET)
+      .remove([storagepath]);
+
     return NextResponse.json(
       {
-        error:
-          error.code === "23505"
-            ? "A report for this project and week is already awaiting review or has been authorized. If it was rejected, you can resubmit for that week."
-            : error.message,
+        error: error.message,
       },
       { status: 400 },
     );
   }
 
-  // The client is no longer notified here. A report at this stage has not
-  // been reviewed by a supervisor or authorized by MD Office — it may still
-  // be rejected at either stage. The client-notification email now fires
-  // only on Authorization, in app/api/project-reports/[id]/authorize/route.ts.
-
   return NextResponse.json(
     {
       ok: true,
-      emailMessage: "Report uploaded and sent for supervisor review.",
+      reportid: report.reportid,
+      updatedat: report.updatedat,
+      emailMessage:
+        "Report uploaded and sent for supervisor review.",
     },
     { status: 201 },
   );

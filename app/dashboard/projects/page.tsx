@@ -10,62 +10,130 @@ import ProjectWorkspace from "./project-workspace";
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  const viewer = await requirePageAccess("projects");
+  const viewer =
+    await requirePageAccess("projects");
+
   const supabase = createClient();
 
-  const canViewFinancial = canViewFinancialRecords(viewer);
+  const canViewFinancial =
+    canViewFinancialRecords(viewer);
 
-  const [{ data: projects }, { data: clients }, { data: managers }] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select(
-          canViewFinancial
-            ? "projectid,clientid,projecttitle,projectlocation,estimatedvalue,startdate,expectedenddate,status"
-            : "projectid,clientid,projecttitle,projectlocation,startdate,expectedenddate,status",
-        )
-        .order("clientid")
-        .order("projectid"),
+  const [
+    {
+      data: projects,
+    },
+    {
+      data: clients,
+    },
+    {
+      data: managers,
+    },
+  ] = await Promise.all([
+    supabase
+      .from("projects")
+      .select(
+        canViewFinancial
+          ? "projectid,clientid,projecttitle,projectlocation,estimatedvalue,startdate,expectedenddate,status"
+          : "projectid,clientid,projecttitle,projectlocation,startdate,expectedenddate,status",
+      )
+      .order("clientid")
+      .order("projectid"),
 
-      supabase
-        .from("clients")
-        .select("clientid,fullnameorcompanyname")
-        .order("fullnameorcompanyname"),
+    supabase
+      .from("clients")
+      .select(
+        "clientid,fullnameorcompanyname",
+      )
+      .order("fullnameorcompanyname"),
 
-      supabase
-        .from("users")
-        .select("userid,fullname")
-        .eq("usertype", "Staff")
-        .order("fullname"),
-    ]);
+    supabase
+      .from("users")
+      .select(
+        "userid,fullname",
+      )
+      .eq("usertype", "Staff")
+      .order("fullname"),
+  ]);
 
-  const [{ data: inflows }, { data: outflows }] = canViewFinancial
+  const [
+    {
+      data: inflows,
+    },
+    {
+      data: outflows,
+    },
+  ] = canViewFinancial
     ? await Promise.all([
         supabase
-          .from("cashinflowreceivables")
-          .select("projectid,amount,approvalstatus"),
+          .from(
+            "cashinflowreceivables",
+          )
+          .select(
+            "projectid,amount,approvalstatus",
+          ),
 
         supabase
-          .from("cashoutflowexpenditure")
-          .select("projectid,amount,approvalstatus"),
+          .from(
+            "cashoutflowexpenditure",
+          )
+          .select(
+            "projectid,amount,approvalstatus",
+          ),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [
+        { data: [] },
+        { data: [] },
+      ];
 
   /*
-   * Only AUTHORIZED reports are allowed to affect project progress.
+   * ONLY AUTHORIZED reports affect displayed progress.
    *
-   * Reports are sorted newest-first, so the first authorized report
-   * encountered for each project is the latest authorized progress.
+   * Ordering:
+   *   newest reporting week
+   *   newest updated report within that week
+   *   newest report ID as final tie-breaker
    */
   const {
     data: authorizedReports,
     error: authorizedReportsError,
   } = await supabase
     .from("projectreports")
-    .select("projectid,reportweek,progresspct")
-    .eq("reviewstatus", "Authorized")
-    .not("progresspct", "is", null)
-    .order("reportweek", { ascending: false });
+    .select(
+      `
+        projectid,
+        reportweek,
+        progresspct,
+        updatedat,
+        reportid
+      `,
+    )
+    .eq(
+      "reviewstatus",
+      "Authorized",
+    )
+    .not(
+      "progresspct",
+      "is",
+      null,
+    )
+    .order(
+      "reportweek",
+      {
+        ascending: false,
+      },
+    )
+    .order(
+      "updatedat",
+      {
+        ascending: false,
+      },
+    )
+    .order(
+      "reportid",
+      {
+        ascending: false,
+      },
+    );
 
   if (authorizedReportsError) {
     console.error(
@@ -74,64 +142,117 @@ export default async function ProjectsPage() {
     );
   }
 
-  const progressByProject = new Map<
-    string,
-    {
-      pct: number;
-      week: string;
-    }
-  >();
+  const progressByProject =
+    new Map<
+      string,
+      {
+        pct: number;
+        week: string;
+      }
+    >();
 
-  (authorizedReports ?? []).forEach((report) => {
-    if (!progressByProject.has(report.projectid)) {
-      progressByProject.set(report.projectid, {
-        pct: Number(report.progresspct),
-        week: report.reportweek,
-      });
+  /*
+   * Since the records are already sorted newest-first,
+   * the first authorized report for each project is the
+   * current displayed progress.
+   */
+  (
+    authorizedReports ?? []
+  ).forEach((report) => {
+    if (
+      !progressByProject.has(
+        report.projectid,
+      )
+    ) {
+      progressByProject.set(
+        report.projectid,
+        {
+          pct: Number(
+            report.progresspct,
+          ),
+          week: report.reportweek,
+        },
+      );
     }
   });
 
   const totals = (
     rows: {
-      projectid: string | null;
-      amount: number | string;
-      approvalstatus: string;
+      projectid:
+        | string
+        | null;
+      amount:
+        | number
+        | string;
+      approvalstatus:
+        string;
     }[],
   ) =>
-    rows.reduce<Record<string, number>>((all, row) => {
-      if (row.projectid && row.approvalstatus === "Approved") {
-        all[row.projectid] =
-          (all[row.projectid] ?? 0) + Number(row.amount);
-      }
+    rows.reduce<
+      Record<string, number>
+    >(
+      (all, row) => {
+        if (
+          row.projectid &&
+          row.approvalstatus ===
+            "Approved"
+        ) {
+          all[row.projectid] =
+            (all[row.projectid] ??
+              0) +
+            Number(
+              row.amount,
+            );
+        }
 
-      return all;
-    }, {});
+        return all;
+      },
+      {},
+    );
 
-  const inflow = totals(inflows ?? []);
-  const outflow = totals(outflows ?? []);
+  const inflow =
+    totals(inflows ?? []);
 
-  const clientNames = new Map(
-    (clients ?? []).map((client) => [
-      client.clientid,
-      client.fullnameorcompanyname,
-    ]),
-  );
+  const outflow =
+    totals(outflows ?? []);
 
-  const projectRows = (projects ?? []).map((project: any) => ({
-    ...project,
+  const clientNames =
+    new Map(
+      (clients ?? []).map(
+        (client) => [
+          client.clientid,
+          client.fullnameorcompanyname,
+        ],
+      ),
+    );
 
-    clientName:
-      clientNames.get(project.clientid) ?? "Unassigned",
+  const projectRows =
+    (projects ?? []).map(
+      (project: any) => ({
+        ...project,
 
-    inflow:
-      inflow[project.projectid] ?? 0,
+        clientName:
+          clientNames.get(
+            project.clientid,
+          ) ??
+          "Unassigned",
 
-    outflow:
-      outflow[project.projectid] ?? 0,
+        inflow:
+          inflow[
+            project.projectid
+          ] ?? 0,
 
-    progress:
-      progressByProject.get(project.projectid) ?? null,
-  }));
+        outflow:
+          outflow[
+            project.projectid
+          ] ?? 0,
+
+        progress:
+          progressByProject.get(
+            project.projectid,
+          ) ?? null,
+      }),
+    );
 
   return (
     <div>
@@ -146,8 +267,9 @@ export default async function ProjectsPage() {
           </h1>
 
           <p className="text-sm text-slate-500">
-            Business Development creates drafts; MD Office authorizes activation
-            and status changes.
+            Business Development creates
+            drafts; MD Office authorizes
+            activation and status changes.
           </p>
         </div>
       </header>
@@ -157,11 +279,17 @@ export default async function ProjectsPage() {
         clients={clients ?? []}
         managers={managers ?? []}
         canEdit={
-          viewer.department === "MD Office" ||
-          viewer.roleName === "Super User"
+          viewer.department ===
+            "MD Office" ||
+          viewer.roleName ===
+            "Super User"
         }
-        canCreate={canCreateClientOrProject(viewer)}
-        canViewFinancial={canViewFinancial}
+        canCreate={canCreateClientOrProject(
+          viewer,
+        )}
+        canViewFinancial={
+          canViewFinancial
+        }
       />
     </div>
   );

@@ -9,13 +9,28 @@ import {
 
 export async function POST(request: Request) {
   const viewer = await getViewer();
-  if (viewer.userType !== "Staff" || viewer.department !== "Operations")
+
+  if (
+    viewer.userType !== "Staff" ||
+    viewer.department !== "Operations"
+  ) {
     return NextResponse.json(
-      { error: "Only assigned Operations staff may upload Progress Reports." },
+      {
+        error:
+          "Only assigned Operations staff may upload Progress Reports.",
+      },
       { status: 403 },
     );
-  const { projectid, reportweek, filename, filesize, mimetype } =
-    await request.json();
+  }
+
+  const {
+    projectid,
+    reportweek,
+    filename,
+    filesize,
+    mimetype,
+  } = await request.json();
+
   if (
     !projectid ||
     !validReportWeek(reportweek) ||
@@ -34,26 +49,22 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
   const admin = createAdminClient();
-  const [{ data: project }, { data: existing }] = await Promise.all([
-    admin
-      .from("projects")
-      .select("projectid")
-      .eq("projectid", projectid)
-      .maybeSingle(),
-    admin
-      .from("projectreports")
-      .select("reportid")
-      .eq("projectid", projectid)
-      .eq("reportweek", reportweek)
-      .neq("reviewstatus", "Rejected")
-      .maybeSingle(),
-  ]);
-  if (!project)
+
+  const { data: project } = await admin
+    .from("projects")
+    .select("projectid")
+    .eq("projectid", projectid)
+    .maybeSingle();
+
+  if (!project) {
     return NextResponse.json(
       { error: "Project was not found." },
       { status: 404 },
     );
+  }
+
   const { data: assignment } = await admin
     .from("projectassignments")
     .select("assignmentid")
@@ -62,25 +73,45 @@ export async function POST(request: Request) {
     .eq("approvalstatus", "Approved")
     .eq("active", true)
     .maybeSingle();
-  if (!assignment)
-    return NextResponse.json(
-      { error: "You are not assigned to this project." },
-      { status: 403 },
-    );
-  if (existing)
+
+  if (!assignment) {
     return NextResponse.json(
       {
         error:
-          "A report for this project and week is already awaiting review or has been authorized. If it was rejected, you can resubmit for that week.",
+          "You are not assigned to this project.",
       },
-      { status: 409 },
+      { status: 403 },
     );
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const storagepath = `${projectid}/${reportweek}/${crypto.randomUUID()}-${safeName}`;
+  }
+
+  /*
+   * Multiple reports are intentionally allowed for the
+   * same project and reporting week.
+   *
+   * Do NOT add a duplicate-report check here.
+   */
+
+  const safeName = filename.replace(
+    /[^a-zA-Z0-9._-]/g,
+    "_",
+  );
+
+  const storagepath =
+    `${projectid}/${reportweek}/${crypto.randomUUID()}-${safeName}`;
+
   const { data, error } = await admin.storage
     .from(REPORT_BUCKET)
     .createSignedUploadUrl(storagepath);
-  return error
-    ? NextResponse.json({ error: error.message }, { status: 500 })
-    : NextResponse.json({ storagepath, token: data.token });
+
+  if (error) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({
+    storagepath,
+    token: data.token,
+  });
 }

@@ -5,18 +5,27 @@ import { sendProjectReportEmail } from "@/lib/mailer";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { reportid: string } }
+  {
+    params,
+  }: {
+    params: { reportid: string };
+  },
 ) {
   const viewer = await getViewer();
 
-  const { progresspct, comments, decision } = await request.json();
+  const {
+    progresspct,
+    comments,
+    decision,
+  } = await request.json();
 
   if (viewer.department !== "Operations") {
     return NextResponse.json(
       {
-        error: "Only Operations may review a progress report.",
+        error:
+          "Only Operations may review a progress report.",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -32,58 +41,65 @@ export async function PATCH(
         error:
           "Progress percentage between 0 and 100 is required.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  if (decision !== "Reviewed" && decision !== "Rejected") {
+  if (
+    decision !== "Reviewed" &&
+    decision !== "Rejected"
+  ) {
     return NextResponse.json(
       {
         error: "Invalid review decision.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const trimmedComments =
-    typeof comments === "string" ? comments.trim() : "";
+    typeof comments === "string"
+      ? comments.trim()
+      : "";
 
-  if (decision === "Rejected" && !trimmedComments) {
+  if (
+    decision === "Rejected" &&
+    !trimmedComments
+  ) {
     return NextResponse.json(
       {
-        error: "A rejection reason is required.",
+        error:
+          "A rejection reason is required.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const admin = createAdminClient();
 
-  /*
-   * Find the report.
-   */
   const {
     data: report,
     error: reportError,
   } = await admin
     .from("projectreports")
     .select(
-      "projectid,reviewstatus,reportweek,uploadedbyuserid,filename"
+      `
+        projectid,
+        reviewstatus,
+        reportweek,
+        uploadedbyuserid,
+        filename
+      `,
     )
     .eq("reportid", params.reportid)
     .maybeSingle();
 
   if (reportError) {
-    console.error(
-      "Failed to fetch project report:",
-      reportError
-    );
-
     return NextResponse.json(
       {
         error: reportError.message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -92,7 +108,7 @@ export async function PATCH(
       {
         error: "Progress Report not found.",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -102,13 +118,13 @@ export async function PATCH(
         error:
           "Report is not awaiting supervisor review.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   /*
-   * Verify that the current Operations user
-   * is an approved supervisor for this project.
+   * The reviewer must be an approved active supervisor
+   * assigned to this project.
    */
   const {
     data: assignment,
@@ -128,16 +144,11 @@ export async function PATCH(
     .maybeSingle();
 
   if (assignmentError) {
-    console.error(
-      "Failed to verify supervisor assignment:",
-      assignmentError
-    );
-
     return NextResponse.json(
       {
         error: assignmentError.message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -147,20 +158,18 @@ export async function PATCH(
         error:
           "You are not an approved supervisor for this project.",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
-  /*
-   * Determine the new report status.
-   */
   const nextStatus =
     decision === "Rejected"
       ? "Rejected"
       : "Reviewed";
 
   /*
-   * Update the report first.
+   * Updating the row automatically updates updatedat
+   * through the database trigger.
    */
   const {
     error: updateError,
@@ -171,28 +180,24 @@ export async function PATCH(
       progresspct: progress,
       supervisorcomments:
         trimmedComments || null,
-      supervisorreviewedbyuserid: viewer.userId,
+      supervisorreviewedbyuserid:
+        viewer.userId,
       supervisorreviewedat:
         new Date().toISOString(),
     })
     .eq("reportid", params.reportid);
 
   if (updateError) {
-    console.error(
-      "Failed to update project report:",
-      updateError
-    );
-
     return NextResponse.json(
       {
         error: updateError.message,
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   /*
-   * A normal review does not require an email.
+   * Reviewed reports simply move to MD Office.
    */
   if (nextStatus !== "Rejected") {
     return NextResponse.json({
@@ -202,19 +207,14 @@ export async function PATCH(
   }
 
   /*
-   * The report was rejected.
-   *
-   * Find the uploader and project so we can
-   * send the rejection notification.
+   * Rejected reports notify the uploader.
    */
   const [
     {
       data: uploader,
-      error: uploaderError,
     },
     {
       data: project,
-      error: projectError,
     },
   ] = await Promise.all([
     admin
@@ -222,7 +222,7 @@ export async function PATCH(
       .select("email,fullname")
       .eq(
         "userid",
-        report.uploadedbyuserid
+        report.uploadedbyuserid,
       )
       .maybeSingle(),
 
@@ -231,51 +231,17 @@ export async function PATCH(
       .select("projecttitle")
       .eq(
         "projectid",
-        report.projectid
+        report.projectid,
       )
       .maybeSingle(),
   ]);
 
-  /*
-   * If the uploader lookup itself failed,
-   * the report remains rejected but the
-   * email cannot be sent.
-   */
-  if (uploaderError) {
-    console.error(
-      "Failed to find report uploader:",
-      uploaderError
-    );
-
-    return NextResponse.json({
-      ok: true,
-      emailSent: false,
-      emailError:
-        "Could not find the report uploader.",
-    });
-  }
-
-  if (projectError) {
-    console.error(
-      "Failed to find project:",
-      projectError
-    );
-  }
-
-  /*
-   * Make sure the uploader has an email address.
-   */
   const uploaderEmail =
     typeof uploader?.email === "string"
       ? uploader.email.trim()
       : "";
 
   if (!uploaderEmail) {
-    console.error(
-      "Uploader has no email address:",
-      report.uploadedbyuserid
-    );
-
     return NextResponse.json({
       ok: true,
       emailSent: false,
@@ -288,9 +254,6 @@ export async function PATCH(
     project?.projecttitle ??
     report.projectid;
 
-  /*
-   * Send the rejection email through Resend.
-   */
   const result =
     await sendProjectReportEmail({
       to: uploaderEmail,
@@ -306,13 +269,10 @@ export async function PATCH(
             color: #1e293b;
           "
         >
-          <h2>
-            Progress Report Rejected
-          </h2>
+          <h2>Progress Report Rejected</h2>
 
           <p>
-            Hello
-            ${uploader?.fullname ?? ""},
+            Hello ${uploader?.fullname ?? ""},
           </p>
 
           <p>
@@ -351,19 +311,7 @@ export async function PATCH(
       `,
     });
 
-  /*
-   * The report is already rejected at this point.
-   * Do NOT undo the rejection if the email fails.
-   *
-   * Instead, tell the frontend exactly why the
-   * email could not be sent.
-   */
   if (!result.sent) {
-    console.error(
-      "Progress report was rejected, but the email failed:",
-      result.error
-    );
-
     return NextResponse.json({
       ok: true,
       emailSent: false,
@@ -373,9 +321,6 @@ export async function PATCH(
     });
   }
 
-  /*
-   * Everything succeeded.
-   */
   return NextResponse.json({
     ok: true,
     emailSent: true,

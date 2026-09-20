@@ -5,11 +5,18 @@ import { sendProjectReportEmail } from "@/lib/mailer";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { reportid: string } },
+  {
+    params,
+  }: {
+    params: { reportid: string };
+  },
 ) {
   const viewer = await getViewer();
 
-  const { decision, comments } = await request.json();
+  const {
+    decision,
+    comments,
+  } = await request.json();
 
   if (
     viewer.department !== "MD Office" &&
@@ -41,10 +48,14 @@ export async function PATCH(
       ? comments.trim()
       : "";
 
-  if (decision === "Rejected" && !trimmedComments) {
+  if (
+    decision === "Rejected" &&
+    !trimmedComments
+  ) {
     return NextResponse.json(
       {
-        error: "A rejection reason is required.",
+        error:
+          "A rejection reason is required.",
       },
       { status: 400 },
     );
@@ -58,17 +69,18 @@ export async function PATCH(
   } = await admin
     .from("projectreports")
     .select(
-      "reviewstatus,progresspct,projectid,reportweek,uploadedbyuserid",
+      `
+        reviewstatus,
+        progresspct,
+        projectid,
+        reportweek,
+        uploadedbyuserid
+      `,
     )
     .eq("reportid", params.reportid)
     .maybeSingle();
 
   if (reportError) {
-    console.error(
-      "Failed to fetch project report:",
-      reportError,
-    );
-
     return NextResponse.json(
       {
         error: reportError.message,
@@ -87,10 +99,7 @@ export async function PATCH(
   }
 
   /*
-   * A report must first be reviewed by Operations.
-   *
-   * The progress percentage entered during supervisor review
-   * is preserved when MD Office authorizes it.
+   * Only Reviewed reports can reach MD Office.
    */
   if (
     report.reviewstatus !== "Reviewed" ||
@@ -105,26 +114,20 @@ export async function PATCH(
     );
   }
 
+  /*
+   * The percentage entered during supervisor review
+   * is preserved.
+   */
   const {
     error: updateError,
   } = await admin
     .from("projectreports")
     .update({
-      /*
-       * This changes Reviewed -> Authorized/Rejected.
-       *
-       * IMPORTANT:
-       * progresspct is intentionally NOT updated here.
-       *
-       * Therefore an authorized report keeps exactly the percentage
-       * entered during supervisor review.
-       */
       reviewstatus: decision,
-
-      authorizedbyuserid: viewer.userId,
-
-      authorizedat: new Date().toISOString(),
-
+      authorizedbyuserid:
+        viewer.userId,
+      authorizedat:
+        new Date().toISOString(),
       authorizationcomments:
         decision === "Rejected"
           ? trimmedComments
@@ -133,11 +136,6 @@ export async function PATCH(
     .eq("reportid", params.reportid);
 
   if (updateError) {
-    console.error(
-      "Failed to authorize project report:",
-      updateError,
-    );
-
     return NextResponse.json(
       {
         error: updateError.message,
@@ -151,7 +149,6 @@ export async function PATCH(
 
   const {
     data: project,
-    error: projectError,
   } = await admin
     .from("projects")
     .select(
@@ -160,37 +157,26 @@ export async function PATCH(
     .eq("projectid", report.projectid)
     .maybeSingle();
 
-  if (projectError) {
-    console.error(
-      "Failed to fetch project/client:",
-      projectError,
-    );
-  }
-
-  const client = project?.clients as unknown as {
-    fullnameorcompanyname: string;
-    email: string | null;
-  } | null;
+  const client =
+    project?.clients as unknown as {
+      fullnameorcompanyname: string;
+      email: string | null;
+    } | null;
 
   /*
-   * If MD Office rejects the report, notify the uploader.
+   * MD Office rejection -> uploader notification.
    */
   if (decision === "Rejected") {
     const {
       data: uploader,
-      error: uploaderError,
     } = await admin
       .from("users")
       .select("email,fullname")
-      .eq("userid", report.uploadedbyuserid)
+      .eq(
+        "userid",
+        report.uploadedbyuserid,
+      )
       .maybeSingle();
-
-    if (uploaderError) {
-      console.error(
-        "Failed to find report uploader:",
-        uploaderError,
-      );
-    }
 
     const uploaderEmail =
       typeof uploader?.email === "string"
@@ -198,12 +184,87 @@ export async function PATCH(
         : "";
 
     if (uploaderEmail) {
-      const result = await sendProjectReportEmail({
-        to: uploaderEmail,
+      const result =
+        await sendProjectReportEmail({
+          to: uploaderEmail,
+
+          subject:
+            `Progress Report rejected at MD Office authorization: ${
+              project?.projecttitle ??
+              report.projectid
+            }`,
+
+          html: `
+            <div
+              style="
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #1e293b;
+              "
+            >
+              <h2>Progress Report Rejected</h2>
+
+              <p>
+                Hello ${uploader?.fullname ?? ""},
+              </p>
+
+              <p>
+                Your Progress Report for
+                <strong>
+                  ${project?.projecttitle ?? report.projectid}
+                </strong>
+                for the week of
+                <strong>${report.reportweek}</strong>
+                was rejected during MD Office authorization.
+              </p>
+
+              <p>
+                <strong>Reason for rejection:</strong>
+              </p>
+
+              <div
+                style="
+                  padding: 12px;
+                  background: #f8fafc;
+                  border-left: 4px solid #dc2626;
+                  margin: 12px 0;
+                "
+              >
+                ${trimmedComments}
+              </div>
+
+              <p>
+                Please review the rejection reason and
+                resubmit a corrected Progress Report.
+              </p>
+
+              <p>
+                Regards,<br />
+                KCBL FinCon Suite
+              </p>
+            </div>
+          `,
+        });
+
+      uploaderEmailSent = result.sent;
+    }
+  }
+
+  /*
+   * ONLY Authorized reports notify the client.
+   */
+  if (
+    decision === "Authorized" &&
+    client?.email
+  ) {
+    const result =
+      await sendProjectReportEmail({
+        to: client.email,
 
         subject:
-          `Progress Report rejected at MD Office authorization: ${
-            project?.projecttitle ?? report.projectid
+          `Your project report is available: ${
+            project?.projecttitle ??
+            report.projectid
           }`,
 
         html: `
@@ -214,40 +275,23 @@ export async function PATCH(
               color: #1e293b;
             "
           >
-            <h2>Progress Report Rejected</h2>
+            <h2>Progress Report Available</h2>
 
             <p>
-              Hello ${uploader?.fullname ?? ""},
+              Hello ${client.fullnameorcompanyname},
             </p>
 
             <p>
-              Your Progress Report for
+              Your weekly Progress Report for
               <strong>
                 ${project?.projecttitle ?? report.projectid}
               </strong>
-              for the week of
-              <strong>${report.reportweek}</strong>
-              was rejected during MD Office authorization.
+              is now available in your secure FinCon Suite
+              project portal.
             </p>
 
             <p>
-              <strong>Reason for rejection:</strong>
-            </p>
-
-            <div
-              style="
-                padding: 12px;
-                background: #f8fafc;
-                border-left: 4px solid #dc2626;
-                margin: 12px 0;
-              "
-            >
-              ${trimmedComments}
-            </div>
-
-            <p>
-              Please review the rejection reason and resubmit
-              a corrected Progress Report.
+              Please sign in to view or download the PDF.
             </p>
 
             <p>
@@ -258,127 +302,42 @@ export async function PATCH(
         `,
       });
 
-      uploaderEmailSent = result.sent;
-
-      if (!result.sent) {
-        console.error(
-          "MD Office rejection email failed:",
-          result.error,
-        );
-      }
-    }
-  }
-
-  /*
-   * The client is notified ONLY after authorization.
-   *
-   * A Submitted, Reviewed or Rejected report does not notify
-   * the client.
-   */
-  if (
-    decision === "Authorized" &&
-    client?.email
-  ) {
-    const notificationKey =
-      `CLIENT_REPORT_AVAILABLE:${params.reportid}`;
-
-    const result = await sendProjectReportEmail({
-      to: client.email,
-
-      subject:
-        `Your project report is available: ${
-          project?.projecttitle ?? report.projectid
-        }`,
-
-      html: `
-        <div
-          style="
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #1e293b;
-          "
-        >
-          <h2>Progress Report Available</h2>
-
-          <p>
-            Hello ${client.fullnameorcompanyname},
-          </p>
-
-          <p>
-            Your weekly Progress Report for
-            <strong>
-              ${project?.projecttitle ?? report.projectid}
-            </strong>
-            is now available in your secure FinCon Suite
-            project portal.
-          </p>
-
-          <p>
-            Please sign in to view or download the PDF.
-          </p>
-
-          <p>
-            Regards,<br />
-            KCBL FinCon Suite
-          </p>
-        </div>
-      `,
-    });
-
     clientEmailSent = result.sent;
 
-    if (!result.sent) {
-      console.error(
-        "Client report notification email failed:",
-        result.error,
-      );
-    }
-
     /*
-     * Only record the notification after the email was
-     * successfully sent.
+     * Record notification only after successful delivery.
      */
     if (result.sent) {
-      const {
-        error: notificationError,
-      } = await admin
+      await admin
         .from("projectreportnotifications")
         .insert({
-          notificationkey: notificationKey,
-          eventtype: "CLIENT_REPORT_AVAILABLE",
-          reportweek: report.reportweek,
-          reportid: params.reportid,
-          recipientemail: client.email,
+          notificationkey:
+            `CLIENT_REPORT_AVAILABLE:${params.reportid}`,
+          eventtype:
+            "CLIENT_REPORT_AVAILABLE",
+          reportweek:
+            report.reportweek,
+          reportid:
+            params.reportid,
+          recipientemail:
+            client.email,
         });
 
-      if (notificationError) {
-        console.error(
-          "Failed to record client report notification:",
-          notificationError,
-        );
-      }
-
-      const {
-        error: notifiedError,
-      } = await admin
+      await admin
         .from("projectreports")
         .update({
-          clientnotifiedat: new Date().toISOString(),
+          clientnotifiedat:
+            new Date().toISOString(),
         })
-        .eq("reportid", params.reportid);
-
-      if (notifiedError) {
-        console.error(
-          "Failed to update client notification timestamp:",
-          notifiedError,
+        .eq(
+          "reportid",
+          params.reportid,
         );
-      }
     }
   }
 
   return NextResponse.json({
     ok: true,
-
     emailSent:
       decision === "Rejected"
         ? uploaderEmailSent

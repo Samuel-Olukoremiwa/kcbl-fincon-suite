@@ -5,9 +5,16 @@ import SettingsTabs from "./settings-tabs";
 
 export default async function SettingsPage() {
   const viewer = await getViewer();
-  const isSuperUser = viewer.roleName === "Super User";
-  const isInternalControl = viewer.department === "Audit/Internal Control";
-  if (!isSuperUser && !isInternalControl) redirect("/dashboard");
+
+  const allowed =
+    viewer.roleName === "Super User" ||
+    viewer.department === "Audit/Internal Control" ||
+    viewer.department === "Finance & Admin" ||
+    viewer.department === "MD Office";
+
+  if (!allowed) {
+    redirect("/dashboard");
+  }
 
   return (
     <div>
@@ -15,12 +22,24 @@ export default async function SettingsPage() {
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
           <Settings size={20} />
         </div>
+
         <div>
-          <h1 className="text-xl font-semibold">Security settings</h1>
-          <p className="text-sm text-slate-500">Timeout changes require Internal Control approval.</p>
+          <h1 className="text-xl font-semibold">
+            Security settings
+          </h1>
+
+          <p className="text-sm text-slate-500">
+            Data Archive uses a three-stage Audit, Finance &amp;
+            Admin, and MD Office approval workflow.
+          </p>
         </div>
       </header>
-      <SettingsTabs role={viewer.roleName} department={viewer.department} canArchive={isSuperUser} />
+
+      <SettingsTabs
+        role={viewer.roleName}
+        department={viewer.department}
+        canArchive={false}
+      />
     </div>
   );
 }

@@ -18,6 +18,9 @@ export default async function AuditPage() {
     { data: users },
     { data: projects },
     { data: progressReports },
+    { data: archiveRequests },
+    { data: restorationRequests },
+    { data: archiveBatches },
   ] = await Promise.all([
     supabase
       .from("cashinflowreceivables")
@@ -55,6 +58,27 @@ export default async function AuditPage() {
         "reportid,projectid,reportweek,filename,reviewstatus,progresspct,uploadedat,uploadedbyuserid,supervisorreviewedat,supervisorreviewedbyuserid,authorizedat,authorizedbyuserid,supervisorcomments",
       )
       .order("uploadedat", { ascending: false }),
+
+    supabase
+      .from("archiverequests")
+      .select(
+        "requestid,financialyear,halfyear,requestedbyuserid,requestedat,financereviewedbyuserid,financereviewedat,financeremarks,mdreviewedbyuserid,mdreviewedat,mdremarks,status,archiveid",
+      )
+      .order("requestedat", { ascending: false }),
+
+    supabase
+      .from("archiverestorationrequests")
+      .select(
+        "requestid,archiveid,requestedbyuserid,requestedat,financereviewedbyuserid,financereviewedat,financeremarks,mdreviewedbyuserid,mdreviewedat,mdremarks,status,restoredat",
+      )
+      .order("requestedat", { ascending: false }),
+
+    supabase
+      .from("archivebatches")
+      .select(
+        "archiveid,financialyear,halfyear,archivedat,archivedbyuserid",
+      )
+      .order("archivedat", { ascending: false }),
   ]);
 
   const userNames = new Map(
@@ -69,7 +93,9 @@ export default async function AuditPage() {
   );
 
   const logsFor = (transactionId: string) =>
-    (logs ?? []).filter((log) => log.transactionid === transactionId);
+    (logs ?? []).filter(
+      (log) => log.transactionid === transactionId,
+    );
 
   const transactions = [
     ...(inflows ?? []).map((transaction: any) => ({
@@ -83,14 +109,19 @@ export default async function AuditPage() {
   ].map((transaction) => {
     const entries = logsFor(transaction.transactionid);
 
-    const initiated = entries.find((entry) => entry.actiontype === "Created");
+    const initiated = entries.find(
+      (entry) => entry.actiontype === "Created",
+    );
 
     const authorized = entries.find(
       (entry) =>
-        entry.actiontype === "Approved" || entry.actiontype === "Rejected",
+        entry.actiontype === "Approved" ||
+        entry.actiontype === "Rejected",
     );
 
-    const overridden = entries.find((entry) => entry.actiontype === "Overridden");
+    const overridden = entries.find(
+      (entry) => entry.actiontype === "Overridden",
+    );
 
     return {
       id: transaction.transactionid,
@@ -100,73 +131,162 @@ export default async function AuditPage() {
         ? projectNames.get(transaction.projectid)
         : null,
       initiatorName:
-        userNames.get(transaction.makeruserid) ?? transaction.makeruserid,
+        userNames.get(transaction.makeruserid) ??
+        transaction.makeruserid,
       initiatedDate: initiated?.actiondate ?? null,
       initiatedTime: initiated?.actiontime ?? null,
       authorizerName: transaction.checkeruserid
         ? (userNames.get(transaction.checkeruserid) ??
           transaction.checkeruserid)
         : null,
-      authorizedDate: authorized?.actiondate ?? transaction.approvaldate,
+      authorizedDate:
+        authorized?.actiondate ?? transaction.approvaldate,
       authorizedTime: authorized?.actiontime ?? null,
       status: transaction.approvalstatus,
       overridden: Boolean(overridden),
       overrideReason: overridden?.comments ?? null,
       overrideBy: overridden
-        ? (userNames.get(overridden.actionbyuserid) ?? overridden.actionbyuserid)
+        ? (userNames.get(overridden.actionbyuserid) ??
+          overridden.actionbyuserid)
         : null,
     };
   });
 
   const records = (logs ?? [])
     .filter((log) =>
-      ["Client", "Project", "Supplier", "Subcontractor"].includes(
-        log.transactiontype,
-      ),
+      [
+        "Client",
+        "Project",
+        "Supplier",
+        "Subcontractor",
+      ].includes(log.transactiontype),
     )
     .map((log) => ({
       ...log,
       id: log.transactionid,
       type: log.transactiontype,
-      userName: userNames.get(log.actionbyuserid) ?? log.actionbyuserid,
+      userName:
+        userNames.get(log.actionbyuserid) ??
+        log.actionbyuserid,
       date: log.actiondate,
       time: log.actiontime,
     }));
 
   const reports = (progressReports ?? []).map((report) => ({
     id: report.reportid,
-    projectName: projectNames.get(report.projectid) ?? report.projectid,
+    projectName:
+      projectNames.get(report.projectid) ??
+      report.projectid,
     filename: report.filename,
     week: report.reportweek,
     status: report.reviewstatus,
     progress: report.progresspct,
     submittedBy:
-      userNames.get(report.uploadedbyuserid) ?? report.uploadedbyuserid,
+      userNames.get(report.uploadedbyuserid) ??
+      report.uploadedbyuserid,
     submittedAt: report.uploadedat,
     reviewedBy: report.supervisorreviewedbyuserid
-      ? (userNames.get(report.supervisorreviewedbyuserid) ??
-        report.supervisorreviewedbyuserid)
+      ? (userNames.get(
+          report.supervisorreviewedbyuserid,
+        ) ?? report.supervisorreviewedbyuserid)
       : null,
     reviewedAt: report.supervisorreviewedat,
     authorizedBy: report.authorizedbyuserid
-      ? (userNames.get(report.authorizedbyuserid) ?? report.authorizedbyuserid)
+      ? (userNames.get(report.authorizedbyuserid) ??
+        report.authorizedbyuserid)
       : null,
     authorizedAt: report.authorizedat,
     comments: report.supervisorcomments,
   }));
+
+  const archives = [
+    ...(archiveRequests ?? []).map((request: any) => ({
+      id: request.requestid,
+      type: "Archive Request",
+      archiveId: request.archiveid,
+      period: `${request.financialyear} — H${request.halfyear}`,
+      status: request.status,
+      requestedBy:
+        userNames.get(request.requestedbyuserid) ??
+        request.requestedbyuserid,
+      requestedAt: request.requestedat,
+      financeReviewedBy: request.financereviewedbyuserid
+        ? (userNames.get(
+            request.financereviewedbyuserid,
+          ) ?? request.financereviewedbyuserid)
+        : null,
+      financeReviewedAt: request.financereviewedat,
+      financeComments: request.financeremarks,
+      mdReviewedBy: request.mdreviewedbyuserid
+        ? (userNames.get(request.mdreviewedbyuserid) ??
+          request.mdreviewedbyuserid)
+        : null,
+      mdReviewedAt: request.mdreviewedat,
+      mdComments: request.mdremarks,
+    })),
+
+    ...(restorationRequests ?? []).map((request: any) => ({
+      id: request.requestid,
+      type: "Restoration Request",
+      archiveId: request.archiveid,
+      period: `Archive ${request.archiveid}`,
+      status: request.status,
+      requestedBy:
+        userNames.get(request.requestedbyuserid) ??
+        request.requestedbyuserid,
+      requestedAt: request.requestedat,
+      financeReviewedBy: request.financereviewedbyuserid
+        ? (userNames.get(
+            request.financereviewedbyuserid,
+          ) ?? request.financereviewedbyuserid)
+        : null,
+      financeReviewedAt: request.financereviewedat,
+      financeComments: request.financeremarks,
+      mdReviewedBy: request.mdreviewedbyuserid
+        ? (userNames.get(request.mdreviewedbyuserid) ??
+          request.mdreviewedbyuserid)
+        : null,
+      mdReviewedAt: request.mdreviewedat,
+      mdComments: request.mdremarks,
+      restoredAt: request.restoredat,
+    })),
+  ];
+
+  const archiveAuditLogs = (logs ?? [])
+    .filter(
+      (log) =>
+        log.transactiontype === "Archive" ||
+        log.transactiontype === "RINF" ||
+        log.transactiontype === "REXP",
+    )
+    .map((log) => ({
+      id: log.logid,
+      requestId: log.transactionid,
+      transactionType: log.transactiontype,
+      action: log.actiontype,
+      userName:
+        userNames.get(log.actionbyuserid) ??
+        log.actionbyuserid,
+      date: log.actiondate,
+      time: log.actiontime,
+      comments: log.comments,
+    }));
 
   return (
     <div>
       <PageHeader
         icon={Landmark}
         title="Audit Trail"
-        description="Transaction, record, and Progress Report history."
+        description="Transaction, record, Progress Report, archive, and restoration history."
       />
 
       <AuditWorkspace
         transactions={transactions}
         records={records}
         progressReports={reports}
+        archives={archives}
+        archiveAuditLogs={archiveAuditLogs}
+        archiveBatches={archiveBatches ?? []}
         canViewFinancial={canViewFinancial}
       />
     </div>

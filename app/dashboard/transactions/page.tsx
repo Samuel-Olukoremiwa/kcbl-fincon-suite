@@ -6,7 +6,9 @@ import PageHeader from "../page-header";
 
 export default async function TransactionsPage() {
   const viewer = await requirePageAccess("transactions");
-  const s = createClient();
+
+  const supabase = createClient();
+
   const [
     { data: clients },
     { data: projects },
@@ -15,37 +17,100 @@ export default async function TransactionsPage() {
     { data: inflows },
     { data: outflows },
   ] = await Promise.all([
-    s.from("clients").select("clientid,fullnameorcompanyname"),
-    s.from("projects").select("projectid,projecttitle"),
-    s.from("suppliers").select("supplierid,suppliername").eq("status", "Active"),
-    s.from("subcontractors").select("subcontractorid,subcontractorname").eq("status", "Active"),
-    s
+    supabase
+      .from("clients")
+      .select("clientid,fullnameorcompanyname"),
+
+    supabase
+      .from("projects")
+      .select("projectid,projecttitle,clientid"),
+
+    supabase
+      .from("suppliers")
+      .select("supplierid,suppliername")
+      .eq("status", "Active"),
+
+    supabase
+      .from("subcontractors")
+      .select("subcontractorid,subcontractorname")
+      .eq("status", "Active"),
+
+    supabase
       .from("cashinflowreceivables")
-      .select("transactionid,clientid,projectid,amount,transactiondate,paymentmethod,description,makeruserid,approvalstatus,checkeruserid,rejectionreason")
-      .order("transactiondate", { ascending: false }),
-    s
+      .select(
+        "transactionid,sourceofcash,clientid,projectid,department,amount,transactiondate,paymentmethod,description,makeruserid,approvalstatus,checkeruserid,rejectionreason",
+      )
+      .order("transactiondate", {
+        ascending: false,
+      }),
+
+    supabase
       .from("cashoutflowexpenditure")
-      .select("transactionid,projectid,supplierid,subcontractorid,expenditurecategory,amount,transactiondate,paymentmethod,description,makeruserid,approvalstatus,checkeruserid,rejectionreason")
-      .order("transactiondate", { ascending: false }),
+      .select(
+        "transactionid,projectid,supplierid,subcontractorid,expenditurecategory,amount,transactiondate,paymentmethod,description,makeruserid,approvalstatus,checkeruserid,rejectionreason",
+      )
+      .order("transactiondate", {
+        ascending: false,
+      }),
   ]);
 
-  const projectNames = new Map((projects ?? []).map((x) => [x.projectid, x.projecttitle]));
-  const supplierNames = new Map((suppliers ?? []).map((x) => [x.supplierid, x.suppliername]));
-  const subcontractorNames = new Map((subcontractors ?? []).map((x) => [x.subcontractorid, x.subcontractorname]));
+  const projectNames = new Map(
+    (projects ?? []).map((project) => [
+      project.projectid,
+      project.projecttitle,
+    ]),
+  );
 
-  const detailedInflows = (inflows ?? []).map((x) => ({
-    ...x,
-    projectname: x.projectid ? (projectNames.get(x.projectid) ?? x.projectid) : "No project",
+  const clientNames = new Map(
+    (clients ?? []).map((client) => [
+      client.clientid,
+      client.fullnameorcompanyname,
+    ]),
+  );
+
+  const supplierNames = new Map(
+    (suppliers ?? []).map((supplier) => [
+      supplier.supplierid,
+      supplier.suppliername,
+    ]),
+  );
+
+  const subcontractorNames = new Map(
+    (subcontractors ?? []).map((subcontractor) => [
+      subcontractor.subcontractorid,
+      subcontractor.subcontractorname,
+    ]),
+  );
+
+  const detailedInflows = (inflows ?? []).map((row) => ({
+    ...row,
+
+    projectname: row.projectid
+      ? projectNames.get(row.projectid) ?? row.projectid
+      : null,
+
+    clientname: row.clientid
+      ? clientNames.get(row.clientid) ?? row.clientid
+      : null,
   }));
 
-  const detailedOutflows = (outflows ?? []).map((x) => ({
-    ...x,
-    projectname: projectNames.get(x.projectid) ?? x.projectid,
-    payeetype: x.supplierid ? "Supplier" : x.subcontractorid ? "Subcontractor" : "In-House",
-    payeename: x.supplierid
-      ? (supplierNames.get(x.supplierid) ?? x.supplierid)
-      : x.subcontractorid
-        ? (subcontractorNames.get(x.subcontractorid) ?? x.subcontractorid)
+  const detailedOutflows = (outflows ?? []).map((row) => ({
+    ...row,
+
+    projectname:
+      projectNames.get(row.projectid) ?? row.projectid,
+
+    payeetype: row.supplierid
+      ? "Supplier"
+      : row.subcontractorid
+        ? "Subcontractor"
+        : "In-House",
+
+    payeename: row.supplierid
+      ? supplierNames.get(row.supplierid) ?? row.supplierid
+      : row.subcontractorid
+        ? subcontractorNames.get(row.subcontractorid) ??
+          row.subcontractorid
         : "In-House",
   }));
 
