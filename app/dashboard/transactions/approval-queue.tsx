@@ -26,6 +26,7 @@ type Item = {
   expenditurecategory?: string | null;
 
   kind: "Cash Inflow" | "Cash Outflow";
+
   table:
     | "cashinflowreceivables"
     | "cashoutflowexpenditure";
@@ -34,6 +35,7 @@ type Item = {
 type Viewer = {
   userId: string;
   roleName: string;
+  department: string | null;
 };
 
 export default function ApprovalQueue({
@@ -47,99 +49,148 @@ export default function ApprovalQueue({
 }) {
   const router = useRouter();
 
-  const [reason, setReason] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [reason, setReason] =
+    useState<Record<string, string>>({});
 
-  const [needsOverride, setNeedsOverride] = useState<
-    Record<string, boolean>
-  >({});
+  const [message, setMessage] =
+    useState<string | null>(null);
 
-  const [overrideReason, setOverrideReason] = useState<
-    Record<string, string>
-  >({});
+  const [needsOverride, setNeedsOverride] =
+    useState<Record<string, boolean>>({});
 
-  const [submitting, setSubmitting] = useState<
-    Record<string, boolean>
-  >({});
+  const [overrideReason, setOverrideReason] =
+    useState<Record<string, string>>({});
 
-  const canApprove = [
-    "Authorizer",
-    "MD",
-    "Super User",
-  ].includes(viewer.roleName);
+  const [submitting, setSubmitting] =
+    useState<Record<string, boolean>>({});
+
+  const canApprove =
+    viewer.roleName === "Super User" ||
+    (viewer.department ===
+      "Finance & Admin" &&
+      viewer.roleName ===
+        "Authorizer") ||
+    (viewer.department === "MD" &&
+      ["Authorizer", "MD"].includes(
+        viewer.roleName,
+      ));
 
   const pending: Item[] = [
     ...inflows.map((row) => ({
       ...row,
       kind: "Cash Inflow" as const,
-      table: "cashinflowreceivables" as const,
+      table:
+        "cashinflowreceivables" as const,
     })),
+
     ...outflows.map((row) => ({
       ...row,
       kind: "Cash Outflow" as const,
-      table: "cashoutflowexpenditure" as const,
+      table:
+        "cashoutflowexpenditure" as const,
     })),
-  ].filter((row) => row.approvalstatus === "Pending");
+  ].filter(
+    (row) =>
+      row.approvalstatus ===
+      "Pending",
+  );
 
   async function decide(
     row: Item,
-    status: "Approved" | "Rejected",
+    status:
+      | "Approved"
+      | "Rejected",
     withOverride = false,
   ) {
     if (
       status === "Rejected" &&
-      !reason[row.transactionid]?.trim()
+      !reason[
+        row.transactionid
+      ]?.trim()
     ) {
-      setMessage("A rejection reason is required.");
+      setMessage(
+        "A rejection reason is required.",
+      );
       return;
     }
 
     if (
       withOverride &&
-      !overrideReason[row.transactionid]?.trim()
+      !overrideReason[
+        row.transactionid
+      ]?.trim()
     ) {
-      setMessage("An override reason is required.");
+      setMessage(
+        "An override reason is required.",
+      );
       return;
     }
 
     setMessage(null);
 
-    setSubmitting((current) => ({
-      ...current,
-      [row.transactionid]: true,
-    }));
+    setSubmitting(
+      (current) => ({
+        ...current,
+        [row.transactionid]:
+          true,
+      }),
+    );
 
     try {
-      const response = await fetch(
-        "/api/transactions/approve",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            table: row.table,
-            transactionid: row.transactionid,
-            status,
-            reason:
-              reason[row.transactionid]?.trim() || null,
-            override: withOverride,
-            overridereason: withOverride
-              ? overrideReason[row.transactionid]?.trim() ||
-                null
-              : null,
-          }),
-        },
-      );
+      const response =
+        await fetch(
+          "/api/transactions/approve",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              table:
+                row.table,
 
-      const result = await response.json();
+              transactionid:
+                row.transactionid,
+
+              status,
+
+              reason:
+                reason[
+                  row
+                    .transactionid
+                ]?.trim() ||
+                null,
+
+              override:
+                withOverride,
+
+              overridereason:
+                withOverride
+                  ? overrideReason[
+                      row
+                        .transactionid
+                    ]?.trim() ||
+                    null
+                  : null,
+            }),
+          },
+        );
+
+      const result =
+        await response.json();
 
       if (!response.ok) {
-        if (result.requiresOverride) {
-          setNeedsOverride((current) => ({
-            ...current,
-            [row.transactionid]: true,
-          }));
+        if (
+          result.requiresOverride
+        ) {
+          setNeedsOverride(
+            (current) => ({
+              ...current,
+              [row.transactionid]:
+                true,
+            }),
+          );
 
           setMessage(null);
           return;
@@ -153,51 +204,68 @@ export default function ApprovalQueue({
         return;
       }
 
-      setNeedsOverride((current) => ({
-        ...current,
-        [row.transactionid]: false,
-      }));
+      setNeedsOverride(
+        (current) => ({
+          ...current,
+          [row.transactionid]:
+            false,
+        }),
+      );
 
-      setReason((current) => ({
-        ...current,
-        [row.transactionid]: "",
-      }));
+      setReason(
+        (current) => ({
+          ...current,
+          [row.transactionid]:
+            "",
+        }),
+      );
 
-      setOverrideReason((current) => ({
-        ...current,
-        [row.transactionid]: "",
-      }));
+      setOverrideReason(
+        (current) => ({
+          ...current,
+          [row.transactionid]:
+            "",
+        }),
+      );
 
       if (result.warning) {
-        setMessage(result.warning);
+        setMessage(
+          result.warning,
+        );
       }
 
       router.refresh();
     } catch {
-      setMessage("Unable to connect to the server.");
+      setMessage(
+        "Unable to connect to the server.",
+      );
     } finally {
-      setSubmitting((current) => ({
-        ...current,
-        [row.transactionid]: false,
-      }));
+      setSubmitting(
+        (current) => ({
+          ...current,
+          [row.transactionid]:
+            false,
+        }),
+      );
     }
   }
 
   return (
     <section className="card mt-6 overflow-hidden">
       <div className="border-b p-5">
-        <p className="section-title">Pending approvals</p>
+        <p className="section-title">
+          Pending approvals
+        </p>
 
         <p className="mt-1 text-sm text-slate-500">
-          Review all request details before authorizing or
-          rejecting.
+          Review all request details before authorizing or rejecting.
         </p>
       </div>
 
       {!canApprove ? (
         <p className="p-6 text-sm text-amber-700">
-          Only an Authorizer, MD, or Super User can approve
-          transactions.
+          Only a Finance &amp; Admin Authorizer, MD Authorizer, or Super User
+          can approve transactions.
         </p>
       ) : (
         <div className="divide-y">
@@ -209,12 +277,18 @@ export default function ApprovalQueue({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <b>
-                    {row.kind} · {row.transactionid}
+                    {row.kind} ·{" "}
+                    {row.transactionid}
                   </b>
 
                   <p className="mt-1 text-sm text-slate-500">
-                    {money(row.amount)} · Initiated by{" "}
-                    {row.makeruserid}
+                    {money(
+                      row.amount,
+                    )}{" "}
+                    · Initiated by{" "}
+                    {
+                      row.makeruserid
+                    }
                   </p>
                 </div>
 
@@ -232,8 +306,10 @@ export default function ApprovalQueue({
                   <Detail
                     label="Source"
                     value={
-                      row.kind === "Cash Inflow"
-                        ? row.sourceofcash === "Department"
+                      row.kind ===
+                      "Cash Inflow"
+                        ? row.sourceofcash ===
+                          "Department"
                           ? `Department — ${
                               row.department ??
                               "Not specified"
@@ -257,7 +333,8 @@ export default function ApprovalQueue({
                     value={
                       row.payeename ??
                       row.clientname ??
-                      (row.kind === "Cash Inflow"
+                      (row.kind ===
+                      "Cash Inflow"
                         ? "Client payment"
                         : "Not specified")
                     }
@@ -267,7 +344,8 @@ export default function ApprovalQueue({
                     label="Category"
                     value={
                       row.expenditurecategory ??
-                      (row.kind === "Cash Inflow"
+                      (row.kind ===
+                      "Cash Inflow"
                         ? "Cash inflow"
                         : "Not specified")
                     }
@@ -275,17 +353,24 @@ export default function ApprovalQueue({
 
                   <Detail
                     label="Amount"
-                    value={money(row.amount)}
+                    value={money(
+                      row.amount,
+                    )}
                   />
 
                   <Detail
                     label="Request date"
-                    value={date(row.transactiondate)}
+                    value={date(
+                      row.transactiondate,
+                    )}
                   />
 
                   <Detail
                     label="Payment method"
-                    value={row.paymentmethod ?? "—"}
+                    value={
+                      row.paymentmethod ??
+                      "—"
+                    }
                   />
 
                   <div className="sm:col-span-2 lg:col-span-3">
@@ -300,32 +385,42 @@ export default function ApprovalQueue({
                 </div>
               </details>
 
-              {needsOverride[row.transactionid] ? (
+              {needsOverride[
+                row.transactionid
+              ] ? (
                 <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4">
                   <p className="text-sm font-medium text-amber-800">
-                    This project&apos;s status is Pending.
-                    Approving this expense requires an
-                    override.
+                    This project&apos;s status is Pending. Approving this
+                    expense requires an override.
                   </p>
 
                   <p className="mt-1 text-xs text-amber-700">
-                    The override and your reason will be
-                    recorded separately in the Audit Trail.
+                    The override and your reason will be recorded separately in
+                    the Audit Trail.
                   </p>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <input
                       value={
                         overrideReason[
-                          row.transactionid
+                          row
+                            .transactionid
                         ] ?? ""
                       }
-                      onChange={(event) =>
-                        setOverrideReason((current) => ({
-                          ...current,
-                          [row.transactionid]:
-                            event.target.value,
-                        }))
+                      onChange={(
+                        event,
+                      ) =>
+                        setOverrideReason(
+                          (
+                            current,
+                          ) => ({
+                            ...current,
+                            [row.transactionid]:
+                              event
+                                .target
+                                .value,
+                          }),
+                        )
                       }
                       placeholder="Reason for overriding the Pending project status"
                       className="field-input max-w-sm"
@@ -334,16 +429,26 @@ export default function ApprovalQueue({
                     <button
                       type="button"
                       onClick={() =>
-                        decide(row, "Approved", true)
+                        decide(
+                          row,
+                          "Approved",
+                          true,
+                        )
                       }
                       disabled={
                         row.makeruserid ===
                           viewer.userId ||
-                        submitting[row.transactionid]
+                        submitting[
+                          row
+                            .transactionid
+                        ]
                       }
                       className="btn-primary"
                     >
-                      {submitting[row.transactionid]
+                      {submitting[
+                        row
+                          .transactionid
+                      ]
                         ? "Overriding…"
                         : "Confirm override & approve"}
                     </button>
@@ -351,10 +456,15 @@ export default function ApprovalQueue({
                     <button
                       type="button"
                       onClick={() =>
-                        setNeedsOverride((current) => ({
-                          ...current,
-                          [row.transactionid]: false,
-                        }))
+                        setNeedsOverride(
+                          (
+                            current,
+                          ) => ({
+                            ...current,
+                            [row.transactionid]:
+                              false,
+                          }),
+                        )
                       }
                       className="btn-secondary"
                     >
@@ -366,14 +476,25 @@ export default function ApprovalQueue({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <input
                     value={
-                      reason[row.transactionid] ?? ""
+                      reason[
+                        row
+                          .transactionid
+                      ] ?? ""
                     }
-                    onChange={(event) =>
-                      setReason((current) => ({
-                        ...current,
-                        [row.transactionid]:
-                          event.target.value,
-                      }))
+                    onChange={(
+                      event,
+                    ) =>
+                      setReason(
+                        (
+                          current,
+                        ) => ({
+                          ...current,
+                          [row.transactionid]:
+                            event
+                              .target
+                              .value,
+                        }),
+                      )
                     }
                     placeholder="Rejection reason (required only to reject)"
                     className="field-input max-w-sm"
@@ -382,16 +503,25 @@ export default function ApprovalQueue({
                   <button
                     type="button"
                     onClick={() =>
-                      decide(row, "Approved")
+                      decide(
+                        row,
+                        "Approved",
+                      )
                     }
                     disabled={
                       row.makeruserid ===
                         viewer.userId ||
-                      submitting[row.transactionid]
+                      submitting[
+                        row
+                          .transactionid
+                      ]
                     }
                     className="btn-primary"
                   >
-                    {submitting[row.transactionid]
+                    {submitting[
+                      row
+                        .transactionid
+                    ]
                       ? "Approving…"
                       : "Approve"}
                   </button>
@@ -399,12 +529,18 @@ export default function ApprovalQueue({
                   <button
                     type="button"
                     onClick={() =>
-                      decide(row, "Rejected")
+                      decide(
+                        row,
+                        "Rejected",
+                      )
                     }
                     disabled={
                       row.makeruserid ===
                         viewer.userId ||
-                      submitting[row.transactionid]
+                      submitting[
+                        row
+                          .transactionid
+                      ]
                     }
                     className="btn-secondary"
                   >

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendProjectReportEmail } from "@/lib/mailer";
+import { canManageProjectReports } from "@/lib/access";
 
 export async function PATCH(
   request: Request,
@@ -19,13 +20,13 @@ export async function PATCH(
   } = await request.json();
 
   if (
-    viewer.department !== "MD Office" &&
+    !canManageProjectReports(viewer) &&
     viewer.roleName !== "Super User"
   ) {
     return NextResponse.json(
       {
         error:
-          "Only MD Office may authorize a reviewed progress report.",
+          "Only an MD Office Authorizer may authorize a reviewed progress report.",
       },
       { status: 403 },
     );

@@ -8,11 +8,14 @@ import ApprovalQueue from "./approval-queue";
 type Viewer = {
   userId: string;
   roleName: string;
+  department: string | null;
 };
 
 type Item = any;
 
-type InflowSource = "Client" | "Department";
+type InflowSource =
+  | "Client"
+  | "Department";
 
 const DEPARTMENTS = [
   "MD",
@@ -25,25 +28,52 @@ const DEPARTMENTS = [
   "Audit/Internal Control",
 ];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () =>
+  new Date()
+    .toISOString()
+    .slice(0, 10);
 
-function statusBadgeClass(status: string) {
-  const s = (status ?? "").toLowerCase();
+function statusBadgeClass(
+  status: string,
+) {
+  const s =
+    (status ?? "")
+      .toLowerCase();
 
-  if (s.includes("approv")) return "badge-success";
-  if (s.includes("reject")) return "badge-danger";
+  if (
+    s.includes("approv")
+  ) {
+    return "badge-success";
+  }
 
-  if (s.includes("pending") || s.includes("awaiting")) {
+  if (
+    s.includes("reject")
+  ) {
+    return "badge-danger";
+  }
+
+  if (
+    s.includes("pending") ||
+    s.includes("awaiting")
+  ) {
     return "badge-warning";
   }
 
   return "badge-neutral";
 }
 
-function payeeTypeBadgeClass(type: string) {
-  if (type === "Supplier") return "badge-brand";
+function payeeTypeBadgeClass(
+  type: string,
+) {
+  if (
+    type === "Supplier"
+  ) {
+    return "badge-brand";
+  }
 
-  if (type === "Subcontractor") {
+  if (
+    type === "Subcontractor"
+  ) {
     return "badge bg-navy-50 text-navy";
   }
 
@@ -67,36 +97,58 @@ export default function TransactionsClient({
   inflows: Item[];
   outflows: Item[];
 }) {
-  const [tab, setTab] = useState<
-    "inflow" | "expense" | "approvals"
-  >("inflow");
+  const [
+    tab,
+    setTab,
+  ] =
+    useState<
+      | "inflow"
+      | "expense"
+      | "approvals"
+    >("inflow");
 
   return (
     <div className="mt-8">
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
         <Tab
-          active={tab === "inflow"}
-          onClick={() => setTab("inflow")}
+          active={
+            tab === "inflow"
+          }
+          onClick={() =>
+            setTab("inflow")
+          }
         >
           Cash inflow
         </Tab>
 
         <Tab
-          active={tab === "expense"}
-          onClick={() => setTab("expense")}
+          active={
+            tab === "expense"
+          }
+          onClick={() =>
+            setTab("expense")
+          }
         >
           Expense request
         </Tab>
 
         <Tab
-          active={tab === "approvals"}
-          onClick={() => setTab("approvals")}
+          active={
+            tab ===
+            "approvals"
+          }
+          onClick={() =>
+            setTab(
+              "approvals",
+            )
+          }
         >
           Approval queue
         </Tab>
       </div>
 
-      {tab === "inflow" && (
+      {tab ===
+        "inflow" && (
         <Inflow
           viewer={viewer}
           clients={clients}
@@ -105,17 +157,21 @@ export default function TransactionsClient({
         />
       )}
 
-      {tab === "expense" && (
+      {tab ===
+        "expense" && (
         <ExpenseRequest
           viewer={viewer}
           projects={projects}
           suppliers={suppliers}
-          subcontractors={subcontractors}
+          subcontractors={
+            subcontractors
+          }
           rows={outflows}
         />
       )}
 
-      {tab === "approvals" && (
+      {tab ===
+        "approvals" && (
         <ApprovalQueue
           viewer={viewer}
           inflows={inflows}
@@ -133,7 +189,8 @@ function Tab({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <button
@@ -161,61 +218,120 @@ function Inflow({
   projects: Item[];
   rows: Item[];
 }) {
-  const router = useRouter();
+  const router =
+    useRouter();
 
-  const [source, setSource] =
-    useState<InflowSource>("Client");
+  const [
+    source,
+    setSource,
+  ] =
+    useState<InflowSource>(
+      "Client",
+    );
 
-  const [selectedClient, setSelectedClient] =
+  const [
+    selectedClient,
+    setSelectedClient,
+  ] =
     useState("");
 
-  const [selectedProject, setSelectedProject] =
+  const [
+    selectedProject,
+    setSelectedProject,
+  ] =
     useState("");
 
-  const [selectedDepartment, setSelectedDepartment] =
+  const [
+    selectedDepartment,
+    setSelectedDepartment,
+  ] =
     useState("");
 
-  const [msg, setMsg] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [
+    msg,
+    setMsg,
+  ] =
+    useState<
+      string | null
+    >(null);
 
-  const canCreate = [
-    "Initiator",
-    "Super User",
-  ].includes(viewer.roleName);
+  const [
+    saving,
+    setSaving,
+  ] =
+    useState(false);
+
+  const canCreate =
+    viewer.roleName ===
+      "Super User" ||
+    (viewer.department ===
+      "Finance & Admin" &&
+      viewer.roleName ===
+        "Initiator");
 
   /*
    * Only show projects belonging to the selected client.
    */
-  const clientProjects = useMemo(() => {
-    if (!selectedClient) return [];
+  const clientProjects =
+    useMemo(() => {
+      if (
+        !selectedClient
+      ) {
+        return [];
+      }
 
-    return projects.filter(
-      (project) =>
-        String(project.clientid) ===
-        String(selectedClient),
+      return projects.filter(
+        (project) =>
+          String(
+            project.clientid,
+          ) ===
+          String(
+            selectedClient,
+          ),
+      );
+    }, [
+      projects,
+      selectedClient,
+    ]);
+
+  function changeSource(
+    nextSource:
+      InflowSource,
+  ) {
+    setSource(
+      nextSource,
     );
-  }, [projects, selectedClient]);
-
-  function changeSource(nextSource: InflowSource) {
-    setSource(nextSource);
 
     /*
      * Clear fields belonging to the previous source.
      * This prevents stale client/project/department
      * values from being submitted.
      */
-    if (nextSource === "Client") {
-      setSelectedDepartment("");
+    if (
+      nextSource ===
+      "Client"
+    ) {
+      setSelectedDepartment(
+        "",
+      );
     } else {
-      setSelectedClient("");
-      setSelectedProject("");
+      setSelectedClient(
+        "",
+      );
+      setSelectedProject(
+        "",
+      );
     }
 
     setMsg(null);
   }
 
-  function changeClient(clientId: string) {
-    setSelectedClient(clientId);
+  function changeClient(
+    clientId: string,
+  ) {
+    setSelectedClient(
+      clientId,
+    );
 
     /*
      * A project belongs to a specific client.
@@ -223,7 +339,9 @@ function Inflow({
      * so a project from the previous client cannot
      * remain selected.
      */
-    setSelectedProject("");
+    setSelectedProject(
+      "",
+    );
 
     setMsg(null);
   }
@@ -233,37 +351,58 @@ function Inflow({
   ) {
     e.preventDefault();
 
-    const form = e.currentTarget;
+    const form =
+      e.currentTarget;
 
     setSaving(true);
     setMsg(null);
 
-    const f = new FormData(form);
+    const f =
+      new FormData(
+        form,
+      );
 
-    const get = (name: string) =>
-      String(f.get(name) ?? "").trim();
+    const get = (
+      name: string,
+    ) =>
+      String(
+        f.get(name) ??
+          "",
+      ).trim();
 
     const projectId =
-      source === "Client"
-        ? get("projectid")
+      source ===
+      "Client"
+        ? get(
+            "projectid",
+          )
         : "";
 
     const department =
-      source === "Department"
-        ? get("department")
+      source ===
+      "Department"
+        ? get(
+            "department",
+          )
         : "";
 
     /*
      * Client source requires both a client and a project.
      */
     if (
-      source === "Client" &&
-      (!selectedClient || !projectId)
+      source ===
+        "Client" &&
+      (!selectedClient ||
+        !projectId)
     ) {
       setMsg(
         "Select a client and a project before submitting the cash inflow.",
       );
-      setSaving(false);
+
+      setSaving(
+        false,
+      );
+
       return;
     }
 
@@ -271,77 +410,132 @@ function Inflow({
      * Department source requires a department.
      */
     if (
-      source === "Department" &&
+      source ===
+        "Department" &&
       !department
     ) {
       setMsg(
         "Select a department before submitting the cash inflow.",
       );
-      setSaving(false);
+
+      setSaving(
+        false,
+      );
+
       return;
     }
 
     /*
      * Description is mandatory.
      */
-    if (!get("description")) {
+    if (
+      !get(
+        "description",
+      )
+    ) {
       setMsg(
         "Description is required.",
       );
-      setSaving(false);
+
+      setSaving(
+        false,
+      );
+
       return;
     }
 
     try {
-      const response = await fetch(
-        "/api/transactions/inflow",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+      const response =
+        await fetch(
+          "/api/transactions/inflow",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  sourceofcash:
+                    source,
+
+                  clientid:
+                    source ===
+                    "Client"
+                      ? selectedClient
+                      : null,
+
+                  projectid:
+                    source ===
+                    "Client"
+                      ? projectId
+                      : null,
+
+                  department:
+                    source ===
+                    "Department"
+                      ? department
+                      : null,
+
+                  amount:
+                    get(
+                      "amount",
+                    ),
+
+                  date:
+                    get(
+                      "date",
+                    ),
+
+                  method:
+                    get(
+                      "method",
+                    ),
+
+                  description:
+                    get(
+                      "description",
+                    ),
+                },
+              ),
           },
-          body: JSON.stringify({
-            sourceofcash: source,
+        );
 
-            clientid:
-              source === "Client"
-                ? selectedClient
-                : null,
+      const result =
+        await response.json();
 
-            projectid:
-              source === "Client"
-                ? projectId
-                : null,
-
-            department:
-              source === "Department"
-                ? department
-                : null,
-
-            amount: get("amount"),
-            date: get("date"),
-            method: get("method"),
-            description: get("description"),
-          }),
-        },
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         setMsg(
           result.error ||
             "Unable to submit cash inflow.",
         );
+
         return;
       }
 
       form.reset();
 
-      setSource("Client");
-      setSelectedClient("");
-      setSelectedProject("");
-      setSelectedDepartment("");
+      setSource(
+        "Client",
+      );
+
+      setSelectedClient(
+        "",
+      );
+
+      setSelectedProject(
+        "",
+      );
+
+      setSelectedDepartment(
+        "",
+      );
 
       setMsg(
         "Cash inflow submitted for approval.",
@@ -366,7 +560,9 @@ function Inflow({
 
         {canCreate ? (
           <form
-            onSubmit={submit}
+            onSubmit={
+              submit
+            }
             className="mt-4 space-y-4"
           >
             <div>
@@ -378,10 +574,13 @@ function Inflow({
                 <button
                   type="button"
                   onClick={() =>
-                    changeSource("Client")
+                    changeSource(
+                      "Client",
+                    )
                   }
                   className={
-                    source === "Client"
+                    source ===
+                    "Client"
                       ? "btn-primary"
                       : "btn-secondary"
                   }
@@ -392,10 +591,13 @@ function Inflow({
                 <button
                   type="button"
                   onClick={() =>
-                    changeSource("Department")
+                    changeSource(
+                      "Department",
+                    )
                   }
                   className={
-                    source === "Department"
+                    source ===
+                    "Department"
                       ? "btn-primary"
                       : "btn-secondary"
                   }
@@ -405,7 +607,8 @@ function Inflow({
               </div>
             </div>
 
-            {source === "Client" && (
+            {source ===
+              "Client" && (
               <>
                 <div>
                   <label
@@ -419,28 +622,43 @@ function Inflow({
                     id="clientid"
                     name="clientid"
                     className="field-input"
-                    value={selectedClient}
-                    onChange={(event) =>
+                    value={
+                      selectedClient
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       changeClient(
-                        event.target.value,
+                        event
+                          .target
+                          .value,
                       )
                     }
                     required
                   >
                     <option value="">
-                      Select client…
+                      Select
+                      client…
                     </option>
 
-                    {clients.map((client) => (
-                      <option
-                        key={client.clientid}
-                        value={client.clientid}
-                      >
-                        {
-                          client.fullnameorcompanyname
-                        }
-                      </option>
-                    ))}
+                    {clients.map(
+                      (
+                        client,
+                      ) => (
+                        <option
+                          key={
+                            client.clientid
+                          }
+                          value={
+                            client.clientid
+                          }
+                        >
+                          {
+                            client.fullnameorcompanyname
+                          }
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
 
@@ -456,14 +674,22 @@ function Inflow({
                     id="projectid"
                     name="projectid"
                     className="field-input"
-                    value={selectedProject}
-                    onChange={(event) =>
+                    value={
+                      selectedProject
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setSelectedProject(
-                        event.target.value,
+                        event
+                          .target
+                          .value,
                       )
                     }
                     required
-                    disabled={!selectedClient}
+                    disabled={
+                      !selectedClient
+                    }
                   >
                     <option value="">
                       {selectedClient
@@ -472,12 +698,20 @@ function Inflow({
                     </option>
 
                     {clientProjects.map(
-                      (project) => (
+                      (
+                        project,
+                      ) => (
                         <option
-                          key={project.projectid}
-                          value={project.projectid}
+                          key={
+                            project.projectid
+                          }
+                          value={
+                            project.projectid
+                          }
                         >
-                          {project.projecttitle}
+                          {
+                            project.projecttitle
+                          }
                         </option>
                       ),
                     )}
@@ -487,15 +721,15 @@ function Inflow({
                     clientProjects.length ===
                       0 && (
                       <p className="mt-1 text-xs text-slate-500">
-                        No projects are assigned to
-                        this client.
+                        No projects are assigned to this client.
                       </p>
                     )}
                 </div>
               </>
             )}
 
-            {source === "Department" && (
+            {source ===
+              "Department" && (
               <div>
                 <label
                   htmlFor="department"
@@ -508,25 +742,40 @@ function Inflow({
                   id="department"
                   name="department"
                   className="field-input"
-                  value={selectedDepartment}
-                  onChange={(event) =>
+                  value={
+                    selectedDepartment
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setSelectedDepartment(
-                      event.target.value,
+                      event
+                        .target
+                        .value,
                     )
                   }
                   required
                 >
                   <option value="">
-                    Select department…
+                    Select
+                    department…
                   </option>
 
                   {DEPARTMENTS.map(
-                    (department) => (
+                    (
+                      department,
+                    ) => (
                       <option
-                        key={department}
-                        value={department}
+                        key={
+                          department
+                        }
+                        value={
+                          department
+                        }
                       >
-                        {department}
+                        {
+                          department
+                        }
                       </option>
                     ),
                   )}
@@ -555,8 +804,14 @@ function Inflow({
               label="Payment method"
               name="method"
               values={[
-                ["Bank Transfer", "Bank Transfer"],
-                ["Cheque", "Cheque"],
+                [
+                  "Bank Transfer",
+                  "Bank Transfer",
+                ],
+                [
+                  "Cheque",
+                  "Cheque",
+                ],
               ]}
               required
             />
@@ -569,7 +824,9 @@ function Inflow({
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={
+                saving
+              }
               className="btn-primary w-full"
             >
               {saving
@@ -579,12 +836,21 @@ function Inflow({
           </form>
         ) : (
           <Notice>
-            Only an Initiator or Super User can submit
-            cash inflow.
+            Only an
+            Initiator or
+            Super User can
+            submit cash
+            inflow.
           </Notice>
         )}
 
-        {msg && <Error message={msg} />}
+        {msg && (
+          <Error
+            message={
+              msg
+            }
+          />
+        )}
       </div>
 
       <TransactionsTable
@@ -608,95 +874,192 @@ function ExpenseRequest({
   subcontractors: Item[];
   rows: Item[];
 }) {
-  const router = useRouter();
+  const router =
+    useRouter();
 
-  const [payee, setPayee] = useState<
-    "Supplier" | "Subcontractor" | "In-House"
-  >("Supplier");
+  const [
+    payee,
+    setPayee,
+  ] =
+    useState<
+      | "Supplier"
+      | "Subcontractor"
+      | "In-House"
+    >("Supplier");
 
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] =
-    useState<string | null>(null);
+  const [
+    saving,
+    setSaving,
+  ] =
+    useState(false);
 
-  const [categories, setCategories] =
+  const [
+    msg,
+    setMsg,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
+    categories,
+    setCategories,
+  ] =
     useState<
       {
-        categoryname: string;
-        isinhouse: boolean;
+        categoryname:
+          string;
+
+        isinhouse:
+          boolean;
       }[]
     >([]);
 
-  const [filterProject, setFilterProject] =
+  const [
+    filterProject,
+    setFilterProject,
+  ] =
     useState("");
 
-  const [filterPayeeType, setFilterPayeeType] =
+  const [
+    filterPayeeType,
+    setFilterPayeeType,
+  ] =
     useState("");
 
   useEffect(() => {
-    fetch("/api/transactions/categories")
-      .then((response) => response.json())
-      .then((result) =>
-        setCategories(result.categories ?? []),
+    fetch(
+      "/api/transactions/categories",
+    )
+      .then(
+        (response) =>
+          response.json(),
       )
-      .catch(() => undefined);
+      .then(
+        (result) =>
+          setCategories(
+            result.categories ??
+              [],
+          ),
+      )
+      .catch(
+        () =>
+          undefined,
+      );
   }, []);
 
-  const canCreate = [
-    "Initiator",
-    "Super User",
-  ].includes(viewer.roleName);
+  const canCreate =
+    viewer.roleName ===
+      "Super User" ||
+    (viewer.department ===
+      "Finance & Admin" &&
+      viewer.roleName ===
+        "Initiator");
 
   async function submit(
     e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault();
 
-    const form = e.currentTarget;
+    const form =
+      e.currentTarget;
 
     setSaving(true);
     setMsg(null);
 
-    const f = new FormData(form);
-
-    const get = (name: string) =>
-      String(f.get(name) ?? "").trim();
-
-    try {
-      const response = await fetch(
-        "/api/transactions/outflow",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            projectid: get("projectid"),
-            payeetype: payee,
-            payeeid:
-              payee === "In-House"
-                ? null
-                : get("payeeid"),
-            category: get("category"),
-            amount: get("amount"),
-            date: get("date"),
-            method: get("method"),
-            description: get("description"),
-          }),
-        },
+    const f =
+      new FormData(
+        form,
       );
 
-      const result = await response.json();
+    const get = (
+      name: string,
+    ) =>
+      String(
+        f.get(name) ??
+          "",
+      ).trim();
 
-      if (!response.ok) {
+    try {
+      const response =
+        await fetch(
+          "/api/transactions/outflow",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  projectid:
+                    get(
+                      "projectid",
+                    ),
+
+                  payeetype:
+                    payee,
+
+                  payeeid:
+                    payee ===
+                    "In-House"
+                      ? null
+                      : get(
+                          "payeeid",
+                        ),
+
+                  category:
+                    get(
+                      "category",
+                    ),
+
+                  amount:
+                    get(
+                      "amount",
+                    ),
+
+                  date:
+                    get(
+                      "date",
+                    ),
+
+                  method:
+                    get(
+                      "method",
+                    ),
+
+                  description:
+                    get(
+                      "description",
+                    ),
+                },
+              ),
+          },
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok
+      ) {
         setMsg(
           result.error ||
             "Unable to submit expense request.",
         );
+
         return;
       }
 
       form.reset();
-      setPayee("Supplier");
+
+      setPayee(
+        "Supplier",
+      );
 
       setMsg(
         "Expense request submitted for authorization. It will not affect cash position until approved.",
@@ -713,65 +1076,90 @@ function ExpenseRequest({
   }
 
   const payees =
-    payee === "Supplier"
-      ? suppliers.map((x) => [
-          x.supplierid,
-          x.suppliername,
-        ])
-      : payee === "Subcontractor"
-        ? subcontractors.map((x) => [
-            x.subcontractorid,
-            x.subcontractorname,
-          ])
+    payee ===
+    "Supplier"
+      ? suppliers.map(
+          (x) => [
+            x.supplierid,
+            x.suppliername,
+          ],
+        )
+      : payee ===
+          "Subcontractor"
+        ? subcontractors.map(
+            (x) => [
+              x.subcontractorid,
+              x.subcontractorname,
+            ],
+          )
         : [];
 
-  const categoryValues = categories
-    .filter((category) =>
-      payee === "In-House"
-        ? category.isinhouse
-        : !category.isinhouse,
-    )
-    .map((category) => [
-      category.categoryname,
-      category.categoryname,
-    ]);
+  const categoryValues =
+    categories
+      .filter(
+        (category) =>
+          payee ===
+          "In-House"
+            ? category.isinhouse
+            : !category.isinhouse,
+      )
+      .map(
+        (category) => [
+          category.categoryname,
+          category.categoryname,
+        ],
+      );
 
-  const filteredRows = useMemo(
-    () =>
-      rows.filter(
-        (row) =>
-          (!filterProject ||
-            row.projectid === filterProject) &&
-          (!filterPayeeType ||
-            row.payeetype === filterPayeeType),
-      ),
-    [rows, filterProject, filterPayeeType],
-  );
+  const filteredRows =
+    useMemo(
+      () =>
+        rows.filter(
+          (row) =>
+            (!filterProject ||
+              row.projectid ===
+                filterProject) &&
+            (!filterPayeeType ||
+              row.payeetype ===
+                filterPayeeType),
+        ),
+      [
+        rows,
+        filterProject,
+        filterPayeeType,
+      ],
+    );
 
   return (
     <section className="mt-6 grid gap-6 xl:grid-cols-[400px_1fr]">
       <div className="card p-6">
         <p className="section-title">
-          Expense approval request
+          Expense approval
+          request
         </p>
 
         <p className="mt-1 text-xs text-slate-500">
-          Authorization is required before this becomes
-          an approved cash outflow.
+          Authorization is
+          required before this
+          becomes an approved
+          cash outflow.
         </p>
 
         {canCreate ? (
           <form
-            onSubmit={submit}
+            onSubmit={
+              submit
+            }
             className="mt-4 space-y-4"
           >
             <Select
               label="Project"
               name="projectid"
-              values={projects.map((p) => [
-                p.projectid,
-                p.projecttitle,
-              ])}
+              values={projects.map(
+                (p) => [
+                  p.projectid,
+                  p.projecttitle,
+                ],
+              )}
               required
             />
 
@@ -787,30 +1175,40 @@ function ExpenseRequest({
                     "Subcontractor",
                     "In-House",
                   ] as const
-                ).map((type) => (
-                  <button
-                    type="button"
-                    key={type}
-                    onClick={() =>
-                      setPayee(type)
-                    }
-                    className={
-                      payee === type
-                        ? "btn-primary"
-                        : "btn-secondary"
-                    }
-                  >
-                    {type}
-                  </button>
-                ))}
+                ).map(
+                  (type) => (
+                    <button
+                      type="button"
+                      key={type}
+                      onClick={() =>
+                        setPayee(
+                          type,
+                        )
+                      }
+                      className={
+                        payee ===
+                        type
+                          ? "btn-primary"
+                          : "btn-secondary"
+                      }
+                    >
+                      {type}
+                    </button>
+                  ),
+                )}
               </div>
             </div>
 
-            {payee !== "In-House" && (
+            {payee !==
+              "In-House" && (
               <Select
-                label={payee}
+                label={
+                  payee
+                }
                 name="payeeid"
-                values={payees}
+                values={
+                  payees
+                }
                 required
               />
             )}
@@ -818,7 +1216,9 @@ function ExpenseRequest({
             <Select
               label="Category"
               name="category"
-              values={categoryValues}
+              values={
+                categoryValues
+              }
               required
             />
 
@@ -843,8 +1243,14 @@ function ExpenseRequest({
               label="Payment method"
               name="method"
               values={[
-                ["Bank Transfer", "Bank Transfer"],
-                ["Cheque", "Cheque"],
+                [
+                  "Bank Transfer",
+                  "Bank Transfer",
+                ],
+                [
+                  "Cheque",
+                  "Cheque",
+                ],
               ]}
               required
             />
@@ -857,7 +1263,9 @@ function ExpenseRequest({
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={
+                saving
+              }
               className="btn-primary w-full"
             >
               {saving
@@ -867,22 +1275,34 @@ function ExpenseRequest({
           </form>
         ) : (
           <Notice>
-            Only an Initiator or Super User can submit an
-            expense request.
+            Only an Initiator
+            or Super User can
+            submit an expense
+            request.
           </Notice>
         )}
 
-        {msg && <Error message={msg} />}
+        {msg && (
+          <Error
+            message={msg}
+          />
+        )}
       </div>
 
       <div>
         <div className="card mb-4 flex flex-wrap gap-3 p-4">
           <select
             className="field-input max-w-[220px]"
-            value={filterProject}
-            onChange={(event) =>
+            value={
+              filterProject
+            }
+            onChange={(
+              event,
+            ) =>
               setFilterProject(
-                event.target.value,
+                event
+                  .target
+                  .value,
               )
             }
           >
@@ -890,22 +1310,36 @@ function ExpenseRequest({
               All projects
             </option>
 
-            {projects.map((project) => (
-              <option
-                key={project.projectid}
-                value={project.projectid}
-              >
-                {project.projecttitle}
-              </option>
-            ))}
+            {projects.map(
+              (project) => (
+                <option
+                  key={
+                    project.projectid
+                  }
+                  value={
+                    project.projectid
+                  }
+                >
+                  {
+                    project.projecttitle
+                  }
+                </option>
+              ),
+            )}
           </select>
 
           <select
             className="field-input max-w-[200px]"
-            value={filterPayeeType}
-            onChange={(event) =>
+            value={
+              filterPayeeType
+            }
+            onChange={(
+              event,
+            ) =>
               setFilterPayeeType(
-                event.target.value,
+                event
+                  .target
+                  .value,
               )
             }
           >
@@ -932,8 +1366,13 @@ function ExpenseRequest({
               type="button"
               className="btn-secondary"
               onClick={() => {
-                setFilterProject("");
-                setFilterPayeeType("");
+                setFilterProject(
+                  "",
+                );
+
+                setFilterPayeeType(
+                  "",
+                );
               }}
             >
               Clear filters
@@ -942,7 +1381,9 @@ function ExpenseRequest({
         </div>
 
         <TransactionsTable
-          rows={filteredRows}
+          rows={
+            filteredRows
+          }
           kind="Expense request"
           showPayee
         />
@@ -995,96 +1436,124 @@ function TransactionsTable({
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {rows.map((row) => (
-              <tr
-                key={row.transactionid}
-                className="row-interactive"
-              >
-                <td className="px-4 py-3">
-                  <b>{row.transactionid}</b>
-
-                  <span className="block text-xs text-slate-400">
-                    {kind} ·{" "}
-                    {row.paymentmethod}
-                  </span>
-                </td>
-
-                <td className="px-4 py-3">
-                  <span className="font-medium text-ink">
-                    {row.projectname ??
-                      "No project"}
-                  </span>
-
-                  <span className="block text-xs text-slate-400">
-                    {row.projectid ?? "—"}
-                  </span>
-
-                  {kind === "Inflow" &&
-                    row.sourceofcash ===
-                      "Department" && (
-                      <span className="mt-1 block text-xs text-slate-500">
-                        Department:{" "}
-                        {row.department}
-                      </span>
-                    )}
-
-                  {kind === "Inflow" &&
-                    row.sourceofcash ===
-                      "Client" &&
-                    row.clientname && (
-                      <span className="mt-1 block text-xs text-slate-500">
-                        Source:{" "}
-                        {row.clientname}
-                      </span>
-                    )}
-                </td>
-
-                {showPayee && (
+            {rows.map(
+              (row) => (
+                <tr
+                  key={
+                    row.transactionid
+                  }
+                  className="row-interactive"
+                >
                   <td className="px-4 py-3">
-                    <span
-                      className={payeeTypeBadgeClass(
-                        row.payeetype,
-                      )}
-                    >
-                      {row.payeetype ?? "—"}
+                    <b>
+                      {
+                        row.transactionid
+                      }
+                    </b>
+
+                    <span className="block text-xs text-slate-400">
+                      {kind} ·{" "}
+                      {
+                        row.paymentmethod
+                      }
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-ink">
+                      {row.projectname ??
+                        "No project"}
                     </span>
 
-                    {row.payeename &&
-                      row.payeetype !==
-                        "In-House" && (
-                        <span className="block text-xs text-slate-400">
-                          {row.payeename}
+                    <span className="block text-xs text-slate-400">
+                      {row.projectid ??
+                        "—"}
+                    </span>
+
+                    {kind ===
+                      "Inflow" &&
+                      row.sourceofcash ===
+                        "Department" && (
+                        <span className="mt-1 block text-xs text-slate-500">
+                          Department:{" "}
+                          {
+                            row.department
+                          }
+                        </span>
+                      )}
+
+                    {kind ===
+                      "Inflow" &&
+                      row.sourceofcash ===
+                        "Client" &&
+                      row.clientname && (
+                        <span className="mt-1 block text-xs text-slate-500">
+                          Source:{" "}
+                          {
+                            row.clientname
+                          }
                         </span>
                       )}
                   </td>
-                )}
 
-                <td className="px-4 py-3">
-                  {money(row.amount)}
-                </td>
+                  {showPayee && (
+                    <td className="px-4 py-3">
+                      <span
+                        className={payeeTypeBadgeClass(
+                          row.payeetype,
+                        )}
+                      >
+                        {row.payeetype ??
+                          "—"}
+                      </span>
 
-                <td className="px-4 py-3">
-                  {date(
-                    row.transactiondate,
+                      {row.payeename &&
+                        row.payeetype !==
+                          "In-House" && (
+                          <span className="block text-xs text-slate-400">
+                            {
+                              row.payeename
+                            }
+                          </span>
+                        )}
+                    </td>
                   )}
-                </td>
 
-                <td className="px-4 py-3">
-                  <span
-                    className={statusBadgeClass(
-                      row.approvalstatus,
+                  <td className="px-4 py-3">
+                    {money(
+                      row.amount,
                     )}
-                  >
-                    {row.approvalstatus}
-                  </span>
-                </td>
-              </tr>
-            ))}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    {date(
+                      row.transactiondate,
+                    )}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span
+                      className={statusBadgeClass(
+                        row.approvalstatus,
+                      )}
+                    >
+                      {
+                        row.approvalstatus
+                      }
+                    </span>
+                  </td>
+                </tr>
+              ),
+            )}
 
             {!rows.length && (
               <tr>
                 <td
-                  colSpan={showPayee ? 6 : 5}
+                  colSpan={
+                    showPayee
+                      ? 6
+                      : 5
+                  }
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   No records yet.
@@ -1155,14 +1624,20 @@ function Select({
           Select…
         </option>
 
-        {values.map((value) => (
-          <option
-            key={value[0]}
-            value={value[0]}
-          >
-            {value[1]}
-          </option>
-        ))}
+        {values.map(
+          (value) => (
+            <option
+              key={
+                value[0]
+              }
+              value={
+                value[0]
+              }
+            >
+              {value[1]}
+            </option>
+          ),
+        )}
       </select>
     </div>
   );
@@ -1183,7 +1658,8 @@ function Error({
 function Notice({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <p className="mt-3 text-sm text-amber-700">

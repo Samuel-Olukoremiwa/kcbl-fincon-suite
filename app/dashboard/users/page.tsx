@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePageAccess } from "@/lib/viewer";
 import { canAccess } from "@/lib/access";
+import {
+  ASSIGNABLE_STAFF_ROLES,
+  SUPER_USER_ROLE,
+} from "@/lib/roles";
 import CreateUserForm from "./create-user-form";
 import EditUserAccess from "./edit-user-access";
 import ApproveUserButton from "./approve-user-button";
@@ -13,17 +17,23 @@ const ROLE_BADGE: Record<string, string> = {
   Initiator: "badge bg-navy-50 text-navy",
   Authorizer: "badge bg-navy-50 text-navy",
   Client: "badge-neutral",
-  Viewer: "badge-neutral",
 };
 
 export default async function UsersPage() {
   const viewer = await requirePageAccess("users");
+
   const canCreate = canAccess(viewer, "users", true);
+  const isSuperUser = viewer.roleName === SUPER_USER_ROLE;
+
   const canApprove =
-    viewer.department === "MD Office" || viewer.roleName === "Super User";
-  const canEditAccess = viewer.roleName === "Super User";
-  // Only the approval authority receives the complete request list. Other
-  // permitted departments retain their normal row-level scoped view.
+    isSuperUser ||
+    (viewer.department === "MD Office" &&
+      ["Authorizer", "MD Office"].includes(viewer.roleName));
+
+  const canEditAccess = isSuperUser;
+
+  // Approval authorities need the complete request list. Other permitted
+  // departments retain their normal row-level scoped view.
   const supabase = canApprove ? createAdminClient() : createClient();
 
   const [{ data: users }, { data: roles }, { data: projects }] =
@@ -35,13 +45,20 @@ export default async function UsersPage() {
         )
         .order("userid"),
 
-      supabase.from("roles").select("roleid, rolename").order("rolename"),
+      supabase
+        .from("roles")
+        .select("roleid, rolename")
+        .order("rolename"),
 
       supabase
         .from("projects")
         .select("projectid, projecttitle")
         .order("projectid"),
     ]);
+
+  const assignableRoleOptions = (roles ?? []).filter((role) =>
+    (ASSIGNABLE_STAFF_ROLES as readonly string[]).includes(role.rolename),
+  );
 
   return (
     <div>
@@ -52,14 +69,20 @@ export default async function UsersPage() {
       />
 
       <div
-        className={`mt-8 grid gap-6 ${canCreate ? "lg:grid-cols-[380px_1fr]" : "grid-cols-1"}`}
+        className={`mt-8 grid gap-6 ${
+          canCreate ? "lg:grid-cols-[380px_1fr]" : "grid-cols-1"
+        }`}
       >
         {canCreate && (
           <div className="card p-6">
             <h2 className="mb-4 text-sm font-semibold text-ink">
               Create a new user
             </h2>
-            <CreateUserForm projects={projects ?? []} />
+
+            <CreateUserForm
+              projects={projects ?? []}
+              canAssignSuperUser={isSuperUser}
+            />
           </div>
         )}
 
@@ -75,51 +98,66 @@ export default async function UsersPage() {
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-slate-100">
-              {users?.map((u) => {
+              {users?.map((user) => {
                 const roleLabel =
-                  (u.roles as unknown as { rolename: string } | null)
+                  (user.roles as unknown as { rolename: string } | null)
                     ?.rolename ?? "—";
-                const initials = u.fullname
+
+                const initials = user.fullname
                   .split(" ")
-                  .map((s: string) => s[0])
+                  .map((segment: string) => segment[0])
                   .slice(0, 2)
                   .join("")
                   .toUpperCase();
 
+                const isClientAccount = user.usertype === "Client";
+
                 return (
-                  <tr key={u.userid} className="row-interactive">
+                  <tr
+                    key={user.userid}
+                    className="row-interactive"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy-50 text-xs font-semibold text-navy">
                           {initials}
                         </div>
+
                         <div>
                           <div className="font-medium text-ink">
-                            {u.fullname}
+                            {user.fullname}
                           </div>
+
                           <div className="text-xs text-slate-400">
-                            {u.userid}
+                            {user.userid}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{u.email}</td>
-                    <td className="px-4 py-3 text-slate-600">{u.usertype}</td>
+
+                    <td className="px-4 py-3 text-slate-600">
+                      {user.email}
+                    </td>
+
+                    <td className="px-4 py-3 text-slate-600">
+                      {user.usertype}
+                    </td>
+
                     <td className="px-4 py-3">
                       <span
-                        className={
-                          ROLE_BADGE[roleLabel] ?? "badge-neutral"
-                        }
+                        className={ROLE_BADGE[roleLabel] ?? "badge-neutral"}
                       >
                         {roleLabel}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         className={
                           "inline-flex items-center gap-1.5 " +
-                          (u.status === "Active"
+                          (user.status === "Active"
                             ? "badge-success"
                             : "badge-neutral")
                         }
@@ -127,34 +165,45 @@ export default async function UsersPage() {
                         <span
                           className={
                             "h-1.5 w-1.5 rounded-full " +
-                            (u.status === "Active"
+                            (user.status === "Active"
                               ? "bg-green-500"
                               : "bg-slate-400")
                           }
                         />
-                        {u.status}
+
+                        {user.status}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
-                        {canApprove && u.status === "Pending" && (
-                          <ApproveUserButton userid={u.userid} />
-                        )}
-                        {canEditAccess && (
+                        {canApprove &&
+                          user.status === "Pending" &&
+                          !isClientAccount && (
+                            <ApproveUserButton userid={user.userid} />
+                          )}
+
+                        {canEditAccess && !isClientAccount && (
                           <EditUserAccess
-                            userid={u.userid}
-                            currentRoleId={u.roleid}
+                            userid={user.userid}
+                            currentRoleId={user.roleid}
                             currentRoleName={roleLabel}
-                            currentDepartment={u.department}
-                            currentAccessLevel={u.accesslevel}
-                            roleOptions={roles ?? []}
+                            currentDepartment={user.department}
+                            roleOptions={assignableRoleOptions}
                           />
+                        )}
+
+                        {isClientAccount && (
+                          <span className="text-xs text-slate-400">
+                            Managed through Clients &amp; KYC
+                          </span>
                         )}
                       </div>
                     </td>
                   </tr>
                 );
               })}
+
               {!users?.length && (
                 <tr>
                   <td

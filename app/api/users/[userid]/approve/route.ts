@@ -7,16 +7,29 @@ export async function PATCH(
   { params }: { params: { userid: string } },
 ) {
   const viewer = await getViewer();
-  if (viewer.department !== "MD Office" && viewer.roleName !== "Super User")
+
+  const canApprove =
+    viewer.roleName === "Super User" ||
+    (viewer.department === "MD Office" &&
+      ["Authorizer", "MD Office"].includes(viewer.roleName));
+
+  if (!canApprove) {
     return NextResponse.json(
-      { error: "Only MD Office may approve staff-user requests." },
+      {
+        error:
+          "Only an MD Office Authorizer or Super User may approve staff-user requests.",
+      },
       { status: 403 },
     );
+  }
+
   const { error } = await createAdminClient()
     .from("users")
     .update({ status: "Active" })
     .eq("userid", params.userid)
+    .eq("usertype", "Staff")
     .eq("status", "Pending");
+
   return error
     ? NextResponse.json({ error: error.message }, { status: 400 })
     : NextResponse.json({ ok: true });

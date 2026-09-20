@@ -2,38 +2,29 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-const ROLES = [
-  "Initiator",
-  "Authorizer",
-  "MD",
-  "MD Office",
-  "Executive Director",
-  "Non-Executive Director",
-  "Finance & Admin",
-  "Business Development",
-  "Operations",
-  "Internal Control",
-];
-
-const DEPARTMENTS = [
-  "MD",
-  "MD Office",
-  "Executive Director",
-  "Non-Executive Director",
-  "Finance & Admin",
-  "Business Development",
-  "Operations",
-  "Audit/Internal Control",
-];
+import {
+  STAFF_DEPARTMENTS,
+  STANDARD_STAFF_ROLES,
+  SUPER_USER_ROLE,
+} from "@/lib/roles";
 
 type Project = {
   projectid: string;
   projecttitle: string;
 };
 
-export default function CreateUserForm({ projects }: { projects: Project[] }) {
+export default function CreateUserForm({
+  projects,
+  canAssignSuperUser,
+}: {
+  projects: Project[];
+  canAssignSuperUser: boolean;
+}) {
   const router = useRouter();
+
+  const roleOptions = canAssignSuperUser
+    ? [...STANDARD_STAFF_ROLES, SUPER_USER_ROLE]
+    : [...STANDARD_STAFF_ROLES];
 
   const [form, setForm] = useState({
     fullName: "",
@@ -41,7 +32,6 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
     phone: "",
     role: "Initiator",
     department: "",
-    accessLevel: "Read & Write",
     projectid: "",
   });
 
@@ -92,10 +82,10 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
         phone: "",
         role: "Initiator",
         department: "",
-        accessLevel: "Read & Write",
         projectid: "",
       });
 
+      setConfirmed(false);
       router.refresh();
     } catch {
       setError("Could not submit the user request. Try again.");
@@ -131,19 +121,30 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
 
         <div>
           <label className="field-label">Role</label>
+
           <select
             className="field-input"
             value={form.role}
             onChange={(event) => set("role", event.target.value)}
           >
-            {ROLES.map((role) => (
-              <option key={role}>{role}</option>
+            {roleOptions.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
             ))}
           </select>
+
+          {canAssignSuperUser && (
+            <p className="mt-1 text-xs text-slate-500">
+              Super User is a special administrative role and can only be
+              assigned by an existing Super User.
+            </p>
+          )}
         </div>
 
         <div>
           <label className="field-label">Department</label>
+
           <select
             className="field-input"
             value={form.department}
@@ -154,8 +155,11 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
             required
           >
             <option value="">Select department…</option>
-            {DEPARTMENTS.map((department) => (
-              <option key={department}>{department}</option>
+
+            {STAFF_DEPARTMENTS.map((department) => (
+              <option key={department} value={department}>
+                {department}
+              </option>
             ))}
           </select>
         </div>
@@ -163,6 +167,7 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
         {form.department === "Operations" && (
           <div>
             <label className="field-label">Assigned project code</label>
+
             <select
               className="field-input"
               value={form.projectid}
@@ -170,12 +175,14 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
               required
             >
               <option value="">Select assigned project…</option>
+
               {projects.map((project) => (
                 <option key={project.projectid} value={project.projectid}>
                   {project.projectid} · {project.projecttitle}
                 </option>
               ))}
             </select>
+
             <p className="mt-1 text-xs text-slate-500">
               Operations users can access only projects approved for their
               assignment.
@@ -183,22 +190,27 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
           </div>
         )}
 
-        <div>
-          <label className="field-label">Access level</label>
-          <select
-            className="field-input"
-            value={form.accessLevel}
-            onChange={(event) => set("accessLevel", event.target.value)}
-          >
-            <option>Read & Write</option>
-            <option>Read Only</option>
-          </select>
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Access level
+          </p>
+
+          <p className="mt-1 text-sm font-medium text-ink">
+            System managed — Read &amp; Write
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            Module access is derived from the selected Department and Role. It
+            cannot be manually overridden.
+          </p>
         </div>
 
         <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
           Business Development submits staff-user requests. MD Office must
-          approve the request before the staff account can sign in.
+          approve the request before the staff account can sign in. Client
+          portal accounts are created separately through Clients &amp; KYC.
         </p>
+
         <label className="flex items-start gap-2 text-xs text-slate-600">
           <input
             type="checkbox"
@@ -206,6 +218,7 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
             onChange={(event) => setConfirmed(event.target.checked)}
             className="mt-0.5 h-4 w-4"
           />
+
           <span>
             I confirm I am authorised to submit this staff member’s business
             contact details for account setup and approval.
@@ -214,9 +227,17 @@ export default function CreateUserForm({ projects }: { projects: Project[] }) {
       </div>
 
       {error && <p className="field-error">{error}</p>}
-      {success && <p className="mt-4 text-sm text-green-700">{success}</p>}
 
-      <button disabled={busy || !confirmed} className="btn-primary mt-6 w-full">
+      {success && (
+        <p className="mt-4 text-sm text-green-700">
+          {success}
+        </p>
+      )}
+
+      <button
+        disabled={busy || !confirmed}
+        className="btn-primary mt-6 w-full"
+      >
         {busy ? "Submitting…" : "Submit for MD Office approval"}
       </button>
     </form>
@@ -239,6 +260,7 @@ function Field({
   return (
     <div>
       <label className="field-label">{label}</label>
+
       <input
         className="field-input"
         type={type}

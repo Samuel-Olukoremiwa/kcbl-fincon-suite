@@ -28,9 +28,22 @@ function createLogId() {
 export async function POST(request: Request) {
   const viewer = await requireStaff();
 
+  const isSuperUser =
+    viewer.roleName === "Super User";
+
+  const isFinanceAuthorizer =
+    viewer.department === "Finance & Admin" &&
+    viewer.roleName === "Authorizer";
+
+  const isMdAuthorizer =
+    viewer.department === "MD" &&
+    ["Authorizer", "MD"].includes(viewer.roleName);
+
   if (
-    !["Authorizer", "MD", "Super User"].includes(
-      viewer.roleName,
+    !(
+      isSuperUser ||
+      isFinanceAuthorizer ||
+      isMdAuthorizer
     )
   ) {
     return NextResponse.json(
@@ -61,14 +74,16 @@ export async function POST(request: Request) {
     body.transactionid ?? "",
   ).trim();
 
-  const status = body.status as ApprovalStatus;
+  const status =
+    body.status as ApprovalStatus;
 
   const reason =
     typeof body.reason === "string"
       ? body.reason.trim()
       : null;
 
-  const override = body.override === true;
+  const override =
+    body.override === true;
 
   const overridereason =
     typeof body.overridereason === "string"
@@ -105,16 +120,23 @@ export async function POST(request: Request) {
     );
   }
 
-  if (status === "Rejected" && !reason) {
+  if (
+    status === "Rejected" &&
+    !reason
+  ) {
     return NextResponse.json(
       {
-        error: "A rejection reason is required.",
+        error:
+          "A rejection reason is required.",
       },
       { status: 400 },
     );
   }
 
-  if (status === "Rejected" && override) {
+  if (
+    status === "Rejected" &&
+    override
+  ) {
     return NextResponse.json(
       {
         error:
@@ -126,7 +148,8 @@ export async function POST(request: Request) {
 
   if (
     override &&
-    table !== "cashoutflowexpenditure"
+    table !==
+      "cashoutflowexpenditure"
   ) {
     return NextResponse.json(
       {
@@ -137,10 +160,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (override && !overridereason) {
+  if (
+    override &&
+    !overridereason
+  ) {
     return NextResponse.json(
       {
-        error: "An override reason is required.",
+        error:
+          "An override reason is required.",
       },
       { status: 400 },
     );
@@ -148,25 +175,37 @@ export async function POST(request: Request) {
 
   const supabase = createClient();
 
-  const { data: transaction, error: transactionError } =
-    await supabase
-      .from(table)
-      .select(
-        "transactionid,transactiondate,projectid,amount,makeruserid,approvalstatus",
-      )
-      .eq("transactionid", transactionid)
-      .single();
+  const {
+    data: transaction,
+    error: transactionError,
+  } = await supabase
+    .from(table)
+    .select(
+      "transactionid,transactiondate,projectid,amount,makeruserid,approvalstatus",
+    )
+    .eq(
+      "transactionid",
+      transactionid,
+    )
+    .single();
 
-  if (transactionError || !transaction) {
+  if (
+    transactionError ||
+    !transaction
+  ) {
     return NextResponse.json(
       {
-        error: "Transaction not found.",
+        error:
+          "Transaction not found.",
       },
       { status: 404 },
     );
   }
 
-  if (transaction.approvalstatus !== "Pending") {
+  if (
+    transaction.approvalstatus !==
+    "Pending"
+  ) {
     return NextResponse.json(
       {
         error: `This transaction has already been ${String(
@@ -181,7 +220,10 @@ export async function POST(request: Request) {
    * Maker-checker separation is enforced on the
    * server, not only in the UI.
    */
-  if (transaction.makeruserid === viewer.userId) {
+  if (
+    transaction.makeruserid ===
+    viewer.userId
+  ) {
     return NextResponse.json(
       {
         error:
@@ -200,17 +242,26 @@ export async function POST(request: Request) {
    */
   if (
     status === "Approved" &&
-    table === "cashoutflowexpenditure" &&
+    table ===
+      "cashoutflowexpenditure" &&
     transaction.projectid
   ) {
-    const { data: project, error: projectError } =
-      await supabase
-        .from("projects")
-        .select("status")
-        .eq("projectid", transaction.projectid)
-        .single();
+    const {
+      data: project,
+      error: projectError,
+    } = await supabase
+      .from("projects")
+      .select("status")
+      .eq(
+        "projectid",
+        transaction.projectid,
+      )
+      .single();
 
-    if (projectError || !project) {
+    if (
+      projectError ||
+      !project
+    ) {
       return NextResponse.json(
         {
           error:
@@ -220,9 +271,13 @@ export async function POST(request: Request) {
       );
     }
 
-    projectPending = project.status === "Pending";
+    projectPending =
+      project.status === "Pending";
 
-    if (projectPending && !override) {
+    if (
+      projectPending &&
+      !override
+    ) {
       return NextResponse.json(
         {
           error:
@@ -233,34 +288,52 @@ export async function POST(request: Request) {
       );
     }
 
-    if (projectPending && override && !overridereason) {
+    if (
+      projectPending &&
+      override &&
+      !overridereason
+    ) {
       return NextResponse.json(
         {
-          error: "An override reason is required.",
+          error:
+            "An override reason is required.",
         },
         { status: 400 },
       );
     }
 
-    const [{ data: inflows }, { data: outflows }] =
+    const [
+      { data: inflows },
+      { data: outflows },
+    ] =
       await Promise.all([
         supabase
-          .from("cashinflowreceivables")
+          .from(
+            "cashinflowreceivables",
+          )
           .select("amount")
           .eq(
             "projectid",
             transaction.projectid,
           )
-          .eq("approvalstatus", "Approved"),
+          .eq(
+            "approvalstatus",
+            "Approved",
+          ),
 
         supabase
-          .from("cashoutflowexpenditure")
+          .from(
+            "cashoutflowexpenditure",
+          )
           .select("amount")
           .eq(
             "projectid",
             transaction.projectid,
           )
-          .eq("approvalstatus", "Approved"),
+          .eq(
+            "approvalstatus",
+            "Approved",
+          ),
       ]);
 
     const approvedInflows =
@@ -278,7 +351,8 @@ export async function POST(request: Request) {
       );
 
     const cashPosition =
-      approvedInflows - approvedOutflows;
+      approvedInflows -
+      approvedOutflows;
 
     /*
      * MD and Super User may approve an outflow
@@ -286,10 +360,12 @@ export async function POST(request: Request) {
      * position. Other authorizers cannot.
      */
     if (
-      Number(transaction.amount) >
-        cashPosition &&
-      !["MD", "Super User"].includes(
-        viewer.roleName,
+      Number(
+        transaction.amount,
+      ) > cashPosition &&
+      !(
+        isSuperUser ||
+        isMdAuthorizer
       )
     ) {
       return NextResponse.json(
@@ -306,7 +382,10 @@ export async function POST(request: Request) {
    * An override is only valid when a Pending
    * project actually required one.
    */
-  if (override && !projectPending) {
+  if (
+    override &&
+    !projectPending
+  ) {
     return NextResponse.json(
       {
         error:
@@ -316,9 +395,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const approvalDate = new Date()
-    .toISOString()
-    .slice(0, 10);
+  const approvalDate =
+    new Date()
+      .toISOString()
+      .slice(0, 10);
 
   /*
    * Re-check Pending during the update itself.
@@ -332,22 +412,33 @@ export async function POST(request: Request) {
     .from(table)
     .update({
       approvalstatus: status,
-      checkeruserid: viewer.userId,
-      approvaldate: approvalDate,
+      checkeruserid:
+        viewer.userId,
+      approvaldate:
+        approvalDate,
       rejectionreason:
         status === "Rejected"
           ? reason
           : null,
     })
-    .eq("transactionid", transactionid)
-    .eq("approvalstatus", "Pending")
-    .select("transactionid")
+    .eq(
+      "transactionid",
+      transactionid,
+    )
+    .eq(
+      "approvalstatus",
+      "Pending",
+    )
+    .select(
+      "transactionid",
+    )
     .maybeSingle();
 
   if (updateError) {
     return NextResponse.json(
       {
-        error: updateError.message,
+        error:
+          updateError.message,
       },
       { status: 400 },
     );
@@ -364,29 +455,42 @@ export async function POST(request: Request) {
   }
 
   const transactionType =
-    table === "cashinflowreceivables"
+    table ===
+    "cashinflowreceivables"
       ? "Cash Inflow"
       : "Cash Outflow";
 
-  const actionTime = new Date()
-    .toTimeString()
-    .slice(0, 8);
+  const actionTime =
+    new Date()
+      .toTimeString()
+      .slice(0, 8);
 
   /*
    * Normal approval/rejection audit record.
    */
-  const { error: auditError } =
+  const {
+    error: auditError,
+  } =
     await supabase
-      .from("makercheckerauditlog")
+      .from(
+        "makercheckerauditlog",
+      )
       .insert({
-        logid: createLogId(),
-        transactiontype: transactionType,
+        logid:
+          createLogId(),
+        transactiontype:
+          transactionType,
         transactionid,
-        actiontype: status,
-        actionbyuserid: viewer.userId,
-        actiondate: approvalDate,
-        actiontime: actionTime,
-        comments: reason || null,
+        actiontype:
+          status,
+        actionbyuserid:
+          viewer.userId,
+        actiondate:
+          approvalDate,
+        actiontime:
+          actionTime,
+        comments:
+          reason || null,
       });
 
   if (auditError) {
@@ -400,7 +504,8 @@ export async function POST(request: Request) {
       ok: true,
       warning:
         "The transaction was processed, but the audit entry could not be written.",
-      auditError: auditError.message,
+      auditError:
+        auditError.message,
       transactionid,
       status,
     });
@@ -411,24 +516,41 @@ export async function POST(request: Request) {
    * separate audit event because the database now
    * explicitly permits the "Overridden" action type.
    */
-  if (projectPending && override) {
-    const { error: overrideAuditError } =
+  if (
+    projectPending &&
+    override
+  ) {
+    const {
+      error:
+        overrideAuditError,
+    } =
       await supabase
-        .from("makercheckerauditlog")
+        .from(
+          "makercheckerauditlog",
+        )
         .insert({
-          logid: createLogId(),
-          transactiontype: transactionType,
+          logid:
+            createLogId(),
+          transactiontype:
+            transactionType,
           transactionid,
-          actiontype: "Overridden",
-          actionbyuserid: viewer.userId,
-          actiondate: approvalDate,
-          actiontime: new Date()
-            .toTimeString()
-            .slice(0, 8),
-          comments: `Approved against a Pending project. Reason: ${overridereason}`,
+          actiontype:
+            "Overridden",
+          actionbyuserid:
+            viewer.userId,
+          actiondate:
+            approvalDate,
+          actiontime:
+            new Date()
+              .toTimeString()
+              .slice(0, 8),
+          comments:
+            `Approved against a Pending project. Reason: ${overridereason}`,
         });
 
-    if (overrideAuditError) {
+    if (
+      overrideAuditError
+    ) {
       return NextResponse.json({
         ok: true,
         warning:

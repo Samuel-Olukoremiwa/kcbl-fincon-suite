@@ -10,8 +10,7 @@ import ProjectWorkspace from "./project-workspace";
 export const dynamic = "force-dynamic";
 
 export default async function ProjectsPage() {
-  const viewer =
-    await requirePageAccess("projects");
+  const viewer = await requirePageAccess("projects");
 
   const supabase = createClient();
 
@@ -19,15 +18,9 @@ export default async function ProjectsPage() {
     canViewFinancialRecords(viewer);
 
   const [
-    {
-      data: projects,
-    },
-    {
-      data: clients,
-    },
-    {
-      data: managers,
-    },
+    { data: projects },
+    { data: clients },
+    { data: managers },
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -41,41 +34,29 @@ export default async function ProjectsPage() {
 
     supabase
       .from("clients")
-      .select(
-        "clientid,fullnameorcompanyname",
-      )
+      .select("clientid,fullnameorcompanyname")
       .order("fullnameorcompanyname"),
 
     supabase
       .from("users")
-      .select(
-        "userid,fullname",
-      )
+      .select("userid,fullname")
       .eq("usertype", "Staff")
       .order("fullname"),
   ]);
 
   const [
-    {
-      data: inflows,
-    },
-    {
-      data: outflows,
-    },
+    { data: inflows },
+    { data: outflows },
   ] = canViewFinancial
     ? await Promise.all([
         supabase
-          .from(
-            "cashinflowreceivables",
-          )
+          .from("cashinflowreceivables")
           .select(
             "projectid,amount,approvalstatus",
           ),
 
         supabase
-          .from(
-            "cashoutflowexpenditure",
-          )
+          .from("cashoutflowexpenditure")
           .select(
             "projectid,amount,approvalstatus",
           ),
@@ -156,20 +137,12 @@ export default async function ProjectsPage() {
    * the first authorized report for each project is the
    * current displayed progress.
    */
-  (
-    authorizedReports ?? []
-  ).forEach((report) => {
-    if (
-      !progressByProject.has(
-        report.projectid,
-      )
-    ) {
+  (authorizedReports ?? []).forEach((report) => {
+    if (!progressByProject.has(report.projectid)) {
       progressByProject.set(
         report.projectid,
         {
-          pct: Number(
-            report.progresspct,
-          ),
+          pct: Number(report.progresspct),
           week: report.reportweek,
         },
       );
@@ -178,31 +151,20 @@ export default async function ProjectsPage() {
 
   const totals = (
     rows: {
-      projectid:
-        | string
-        | null;
-      amount:
-        | number
-        | string;
-      approvalstatus:
-        string;
+      projectid: string | null;
+      amount: number | string;
+      approvalstatus: string;
     }[],
   ) =>
-    rows.reduce<
-      Record<string, number>
-    >(
+    rows.reduce<Record<string, number>>(
       (all, row) => {
         if (
           row.projectid &&
-          row.approvalstatus ===
-            "Approved"
+          row.approvalstatus === "Approved"
         ) {
           all[row.projectid] =
-            (all[row.projectid] ??
-              0) +
-            Number(
-              row.amount,
-            );
+            (all[row.projectid] ?? 0) +
+            Number(row.amount);
         }
 
         return all;
@@ -210,49 +172,36 @@ export default async function ProjectsPage() {
       {},
     );
 
-  const inflow =
-    totals(inflows ?? []);
-
-  const outflow =
-    totals(outflows ?? []);
+  const inflow = totals(inflows ?? []);
+  const outflow = totals(outflows ?? []);
 
   const clientNames =
     new Map(
-      (clients ?? []).map(
-        (client) => [
-          client.clientid,
-          client.fullnameorcompanyname,
-        ],
-      ),
+      (clients ?? []).map((client) => [
+        client.clientid,
+        client.fullnameorcompanyname,
+      ]),
     );
 
   const projectRows =
-    (projects ?? []).map(
-      (project: any) => ({
-        ...project,
+    (projects ?? []).map((project: any) => ({
+      ...project,
 
-        clientName:
-          clientNames.get(
-            project.clientid,
-          ) ??
-          "Unassigned",
+      clientName:
+        clientNames.get(project.clientid) ??
+        "Unassigned",
 
-        inflow:
-          inflow[
-            project.projectid
-          ] ?? 0,
+      inflow:
+        inflow[project.projectid] ?? 0,
 
-        outflow:
-          outflow[
-            project.projectid
-          ] ?? 0,
+      outflow:
+        outflow[project.projectid] ?? 0,
 
-        progress:
-          progressByProject.get(
-            project.projectid,
-          ) ?? null,
-      }),
-    );
+      progress:
+        progressByProject.get(
+          project.projectid,
+        ) ?? null,
+    }));
 
   return (
     <div>
@@ -267,8 +216,7 @@ export default async function ProjectsPage() {
           </h1>
 
           <p className="text-sm text-slate-500">
-            Business Development creates
-            drafts; MD Office authorizes
+            Business Development creates drafts; MD Office authorizes
             activation and status changes.
           </p>
         </div>
@@ -279,17 +227,12 @@ export default async function ProjectsPage() {
         clients={clients ?? []}
         managers={managers ?? []}
         canEdit={
-          viewer.department ===
-            "MD Office" ||
-          viewer.roleName ===
-            "Super User"
+          viewer.roleName === "Super User" ||
+          (viewer.department === "MD Office" &&
+            ["Authorizer", "MD Office"].includes(viewer.roleName))
         }
-        canCreate={canCreateClientOrProject(
-          viewer,
-        )}
-        canViewFinancial={
-          canViewFinancial
-        }
+        canCreate={canCreateClientOrProject(viewer)}
+        canViewFinancial={canViewFinancial}
       />
     </div>
   );

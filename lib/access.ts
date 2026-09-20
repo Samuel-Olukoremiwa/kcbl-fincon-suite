@@ -17,9 +17,10 @@ export type ModuleKey =
 
 type Rule = { modules: ModuleKey[]; write: ModuleKey[] };
 
-// Keyed by DEPARTMENT, per the access matrix — not by role. Role
-// (Initiator vs Authorizer) governs submit-vs-approve *within* a
-// department that has write access, not which modules are visible.
+// Department controls which parts of the system a staff member can access.
+// Role controls workflow actions inside those modules (Initiator vs
+// Authorizer). Access level is derived automatically and is not selected by
+// the user.
 const departmentMatrix: Record<string, Rule> = {
   MD: {
     modules: [
@@ -40,6 +41,7 @@ const departmentMatrix: Record<string, Rule> = {
       "projects",
       "suppliers",
       "subcontractors",
+      "transactions",
       "audit",
       "editRequests",
       "reports",
@@ -75,6 +77,7 @@ const departmentMatrix: Record<string, Rule> = {
       "projects",
       "suppliers",
       "subcontractors",
+      "transactions",
       "audit",
       "editRequests",
       "settings",
@@ -117,29 +120,30 @@ const clientRule: Rule = { modules: ["dashboard", "reports"], write: [] };
 
 export function canAccess(viewer: Viewer, module: ModuleKey, write = false) {
   if (viewer.roleName === "Super User") {
-    const r = superUserRule;
-    return (write ? r.write : r.modules).includes(module);
-  }
-  if (viewer.userType === "Client" || viewer.roleName === "Client") {
-    const r = clientRule;
-    return (write ? r.write : r.modules).includes(module);
+    const rule = superUserRule;
+    return (write ? rule.write : rule.modules).includes(module);
   }
 
-  // Some existing accounts have the matrix label stored as their role rather
-  // than department. Supporting that legacy shape still applies the same
-  // least-privilege scope; an Initiator/Authorizer alone grants nothing.
+  if (viewer.userType === "Client") {
+    const rule = clientRule;
+    return (write ? rule.write : rule.modules).includes(module);
+  }
+
+  // Department is the source of module scope. The role does not grant access
+  // to a department's modules by itself.
   const matrixLabel = viewer.department || viewer.roleName;
   const rule: Rule = departmentMatrix[matrixLabel] ?? {
     modules: [],
     write: [],
   };
 
-  if (!(write ? rule.write : rule.modules).includes(module)) return false;
-
-  return true;
+  return (write ? rule.write : rule.modules).includes(module);
 }
 
-// Progress Reports are deliberately narrower than ordinary project access.
+// Progress Reports are deliberately narrower than ordinary MD Office access.
+// Only an MD Office Authorizer may perform final authorization. The legacy
+// "MD Office" role is kept as a temporary compatibility path for existing
+// accounts; new users cannot be assigned that role.
 export function canManageProjectReports(viewer: Viewer) {
   return (
     viewer.userType === "Staff" &&
@@ -147,6 +151,9 @@ export function canManageProjectReports(viewer: Viewer) {
     ["Authorizer", "MD Office"].includes(viewer.roleName)
   );
 }
+
+// Operations remains department-driven: the existing workflow does not split
+// submission/review behavior between Initiator and Authorizer.
 export function canSubmitProgressReports(viewer: Viewer) {
   return viewer.userType === "Staff" && viewer.department === "Operations";
 }
@@ -154,18 +161,15 @@ export function canSubmitProgressReports(viewer: Viewer) {
 export function canCreateClientOrProject(viewer: Viewer) {
   return (
     viewer.userType === "Staff" &&
-    viewer.roleName !== "MD" &&
     (viewer.roleName === "Super User" ||
       ["Business Development", "MD Office"].includes(viewer.department ?? ""))
   );
 }
 
-// These teams require project, client, or audit visibility to perform their
-// work, but must never receive financial values from page queries or APIs.
+// MD Office and Audit/Internal Control are allowed to see financial details.
+// Operations and Business Development retain non-financial visibility only.
 export function canViewFinancialRecords(viewer: Viewer) {
-  return ![
-    "Operations",
-    "Business Development",
-    "Audit/Internal Control",
-  ].includes(viewer.department ?? "");
+  return !["Operations", "Business Development"].includes(
+    viewer.department ?? "",
+  );
 }

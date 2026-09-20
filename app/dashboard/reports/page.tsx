@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getViewer } from "@/lib/viewer";
 import {
   canAccess,
+  canManageProjectReports,
   canSubmitProgressReports,
 } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,12 +12,15 @@ import ReportWorkspace from "./report-workspace";
 export default async function ReportsPage() {
   const viewer = await getViewer();
 
-  const canUpload = canSubmitProgressReports(viewer);
+  const canUpload =
+    canSubmitProgressReports(viewer);
 
-  const canReview = viewer.department === "Operations";
+  const canReview =
+    viewer.department === "Operations";
 
   const canAuthorize =
-    viewer.department === "MD Office" || viewer.roleName === "Super User";
+    canManageProjectReports(viewer) ||
+    viewer.roleName === "Super User";
 
   if (
     !canAccess(viewer, "reports") ||
@@ -63,7 +67,10 @@ export default async function ReportsPage() {
         </div>
 
         <div>
-          <h1 className="text-xl font-semibold">Progress Reports</h1>
+          <h1 className="text-xl font-semibold">
+            Progress Reports
+          </h1>
+
           <p className="text-sm text-slate-500">
             Submit, review, authorize, view, and download project progress
             reports.

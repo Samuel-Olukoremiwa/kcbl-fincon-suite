@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { canAccess, type ModuleKey } from "@/lib/access";
+import { deriveAccessLevel, type AccessLevel } from "@/lib/roles";
 
 export type Viewer = {
   userId: string;
@@ -9,33 +10,48 @@ export type Viewer = {
   userType: "Staff" | "Client";
   roleName: string;
   department: string | null;
-  accessLevel: "Read & Write" | "Read Only";
+  accessLevel: AccessLevel;
 };
 
 export async function getViewer(): Promise<Viewer> {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("users")
-    .select("userid, fullname, usertype, department, accesslevel, status, roles(rolename)")
+    .select(
+      "userid, fullname, usertype, department, accesslevel, status, roles(rolename)",
+    )
     .eq("authuserid", user.id)
     .single();
 
   if (!profile) redirect("/login?error=profile");
-  if (profile.status && profile.status !== "Active") redirect("/login?error=pending-approval");
+  if (profile.status && profile.status !== "Active") {
+    redirect("/login?error=pending-approval");
+  }
 
-  const role = (profile.roles as unknown as { rolename: string } | null)?.rolename ?? "Unknown";
+  const role =
+    (profile.roles as unknown as { rolename: string } | null)?.rolename ??
+    "Unknown";
+
+  const userType = profile.usertype as "Staff" | "Client";
 
   return {
     userId: profile.userid,
     authUserId: user.id,
     fullName: profile.fullname,
-    userType: profile.usertype as "Staff" | "Client",
+    userType,
     roleName: role,
     department: profile.department ?? null,
-    accessLevel: (profile.accesslevel ?? "Read Only") as "Read & Write" | "Read Only",
+    accessLevel: deriveAccessLevel({
+      userType,
+      roleName: role,
+      storedAccessLevel: profile.accesslevel,
+    }),
   };
 }
 
@@ -57,8 +73,7 @@ export async function requirePageAccess(module: ModuleKey, write = false) {
 
 // Server-side API guard. Use at the top of any route.ts handler that
 // performs a write. Returns a Response to send back immediately if the
-// caller isn't allowed to write, instead of redirecting (API routes
-// can't redirect a fetch() call the way pages redirect a browser).
+// caller isn't allowed to write, instead of redirecting.
 export async function requireApiWriteAccess(module: ModuleKey) {
   const viewer = await requireStaff();
   if (!canAccess(viewer, module, true)) {

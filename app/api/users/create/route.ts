@@ -2,33 +2,24 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-
-const VALID_ROLES = [
-  "Initiator",
-  "Authorizer",
-  "MD",
-  "MD Office",
-  "Executive Director",
-  "Non-Executive Director",
-  "Finance & Admin",
-  "Business Development",
-  "Operations",
-  "Internal Control",
-];
+import {
+  ASSIGNABLE_STAFF_ROLES,
+  SUPER_USER_ROLE,
+  deriveAccessLevel,
+  isStaffDepartment,
+} from "@/lib/roles";
 
 export async function POST(request: Request) {
   const body = await request.json();
 
-  const { fullName, email, phone, role, department, accessLevel, projectid } =
-    body as {
-      fullName?: string;
-      email?: string;
-      phone?: string;
-      role?: string;
-      department?: string;
-      accessLevel?: "Read & Write" | "Read Only";
-      projectid?: string;
-    };
+  const { fullName, email, phone, role, department, projectid } = body as {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+    department?: string;
+    projectid?: string;
+  };
 
   if (!fullName || !email || !phone || !role || !department) {
     return NextResponse.json(
@@ -40,16 +31,16 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!VALID_ROLES.includes(role)) {
+  if (!(ASSIGNABLE_STAFF_ROLES as readonly string[]).includes(role)) {
     return NextResponse.json(
       { error: "Select a valid staff role." },
       { status: 400 },
     );
   }
 
-  if (!["Read & Write", "Read Only"].includes(accessLevel ?? "")) {
+  if (!isStaffDepartment(department)) {
     return NextResponse.json(
-      { error: "Select a valid access level." },
+      { error: "Select a valid staff department." },
       { status: 400 },
     );
   }
@@ -91,15 +82,28 @@ export async function POST(request: Request) {
     (callerProfile.roles as unknown as { rolename: string } | null)?.rolename ??
     "";
 
+  const callerIsSuperUser = callerRole === SUPER_USER_ROLE;
+
   const callerCanCreate =
-    callerRole === "Super User" ||
-    callerProfile.department === "Business Development";
+    callerIsSuperUser || callerProfile.department === "Business Development";
 
   if (!callerCanCreate) {
     return NextResponse.json(
       {
         error:
           "Only Business Development or a Super User can submit staff-user requests.",
+      },
+      { status: 403 },
+    );
+  }
+
+  // Super User is a privileged administrative role. Hiding it in the UI is
+  // not enough; the server also enforces that only another Super User can
+  // assign it.
+  if (role === SUPER_USER_ROLE && !callerIsSuperUser) {
+    return NextResponse.json(
+      {
+        error: "Only a current Super User can assign the Super User role.",
       },
       { status: 403 },
     );
@@ -172,6 +176,11 @@ export async function POST(request: Request) {
     );
   }
 
+  const accessLevel = deriveAccessLevel({
+    userType: "Staff",
+    roleName: role,
+  });
+
   const { error: userError } = await admin.from("users").insert({
     userid: newUserId,
     fullname: fullName.trim(),
@@ -183,8 +192,6 @@ export async function POST(request: Request) {
     accesslevel: accessLevel,
     roleid: roleRow.roleid,
     passwordhash: "SUPABASE_AUTH_MANAGED",
-    // The existing users.status field is VARCHAR(10). "Pending" preserves
-    // the approval state without exceeding that database constraint.
     status: "Pending",
     datecreated: new Date().toISOString().slice(0, 10),
     createdby: callerProfile.userid,
@@ -239,7 +246,6 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       userId: newUserId,
-      temporaryPassword,
       message:
         "Staff-user request submitted. MD Office must approve it before the account can sign in.",
     },
