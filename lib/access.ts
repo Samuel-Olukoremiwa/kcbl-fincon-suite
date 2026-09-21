@@ -34,6 +34,7 @@ const departmentMatrix: Record<string, Rule> = {
     ],
     write: [],
   },
+
   "MD Office": {
     modules: [
       "users",
@@ -43,6 +44,7 @@ const departmentMatrix: Record<string, Rule> = {
       "subcontractors",
       "transactions",
       "audit",
+      "settings",
       "editRequests",
       "reports",
       "assignments",
@@ -57,20 +59,59 @@ const departmentMatrix: Record<string, Rule> = {
       "assignments",
     ],
   },
-  "Executive Director": { modules: ["dashboard", "audit"], write: [] },
-  "Non-Executive Director": { modules: ["dashboard"], write: [] },
+
+  "Executive Director": {
+    modules: ["dashboard", "audit"],
+    write: [],
+  },
+
+  "Non-Executive Director": {
+    modules: ["dashboard"],
+    write: [],
+  },
+
   "Finance & Admin": {
-    modules: ["suppliers", "subcontractors", "transactions", "editRequests"],
-    write: ["suppliers", "subcontractors", "transactions", "editRequests"],
+    modules: [
+      "suppliers",
+      "subcontractors",
+      "transactions",
+      "settings",
+      "editRequests",
+    ],
+    write: [
+      "suppliers",
+      "subcontractors",
+      "transactions",
+      "editRequests",
+    ],
   },
+
   "Business Development": {
-    modules: ["users", "clients", "projects", "editRequests"],
-    write: ["users", "clients", "projects", "editRequests"],
+    modules: [
+      "users",
+      "clients",
+      "projects",
+      "editRequests",
+    ],
+    write: [
+      "users",
+      "clients",
+      "projects",
+      "editRequests",
+    ],
   },
+
   Operations: {
-    modules: ["reports", "assignments"],
-    write: ["reports", "assignments"],
+    modules: [
+      "reports",
+      "assignments",
+    ],
+    write: [
+      "reports",
+      "assignments",
+    ],
   },
+
   "Audit/Internal Control": {
     modules: [
       "clients",
@@ -102,6 +143,7 @@ const superUserRule: Rule = {
     "reports",
     "assignments",
   ],
+
   write: [
     "users",
     "clients",
@@ -116,60 +158,204 @@ const superUserRule: Rule = {
   ],
 };
 
-const clientRule: Rule = { modules: ["dashboard", "reports"], write: [] };
+const clientRule: Rule = {
+  modules: [
+    "dashboard",
+    "reports",
+  ],
+  write: [],
+};
 
-export function canAccess(viewer: Viewer, module: ModuleKey, write = false) {
+export function canAccess(
+  viewer: Viewer,
+  module: ModuleKey,
+  write = false,
+) {
   if (viewer.roleName === "Super User") {
     const rule = superUserRule;
-    return (write ? rule.write : rule.modules).includes(module);
+
+    return (
+      write
+        ? rule.write
+        : rule.modules
+    ).includes(module);
   }
 
   if (viewer.userType === "Client") {
     const rule = clientRule;
-    return (write ? rule.write : rule.modules).includes(module);
+
+    return (
+      write
+        ? rule.write
+        : rule.modules
+    ).includes(module);
   }
 
-  // Department is the source of module scope. The role does not grant access
-  // to a department's modules by itself.
-  const matrixLabel = viewer.department || viewer.roleName;
-  const rule: Rule = departmentMatrix[matrixLabel] ?? {
-    modules: [],
-    write: [],
-  };
+  // Department is the source of module scope.
+  // Role does not independently grant access to
+  // another department's modules.
+  const matrixLabel =
+    viewer.department ||
+    viewer.roleName;
 
-  return (write ? rule.write : rule.modules).includes(module);
+  const rule: Rule =
+    departmentMatrix[matrixLabel] ?? {
+      modules: [],
+      write: [],
+    };
+
+  return (
+    write
+      ? rule.write
+      : rule.modules
+  ).includes(module);
 }
 
-// Progress Reports are deliberately narrower than ordinary MD Office access.
-// Only an MD Office Authorizer may perform final authorization. The legacy
-// "MD Office" role is kept as a temporary compatibility path for existing
-// accounts; new users cannot be assigned that role.
-export function canManageProjectReports(viewer: Viewer) {
+// Progress Reports are deliberately narrower than
+// ordinary MD Office access.
+//
+// Only an MD Office Authorizer may perform final
+// authorization.
+//
+// "MD Office" remains temporarily accepted as a
+// legacy role for existing accounts.
+export function canManageProjectReports(
+  viewer: Viewer,
+) {
   return (
     viewer.userType === "Staff" &&
     viewer.department === "MD Office" &&
-    ["Authorizer", "MD Office"].includes(viewer.roleName)
+    [
+      "Authorizer",
+      "MD Office",
+    ].includes(viewer.roleName)
   );
 }
 
-// Operations remains department-driven: the existing workflow does not split
-// submission/review behavior between Initiator and Authorizer.
-export function canSubmitProgressReports(viewer: Viewer) {
-  return viewer.userType === "Staff" && viewer.department === "Operations";
-}
-
-export function canCreateClientOrProject(viewer: Viewer) {
+// Operations remains department-driven for the
+// current Progress Report workflow.
+export function canSubmitProgressReports(
+  viewer: Viewer,
+) {
   return (
     viewer.userType === "Staff" &&
-    (viewer.roleName === "Super User" ||
-      ["Business Development", "MD Office"].includes(viewer.department ?? ""))
+    viewer.department === "Operations"
   );
 }
 
-// MD Office and Audit/Internal Control are allowed to see financial details.
-// Operations and Business Development retain non-financial visibility only.
-export function canViewFinancialRecords(viewer: Viewer) {
-  return !["Operations", "Business Development"].includes(
+export function canCreateClientOrProject(
+  viewer: Viewer,
+) {
+  return (
+    viewer.userType === "Staff" &&
+    (
+      viewer.roleName === "Super User" ||
+      [
+        "Business Development",
+        "MD Office",
+      ].includes(
+        viewer.department ?? "",
+      )
+    )
+  );
+}
+
+// MD Office and Audit/Internal Control may view
+// financial details.
+//
+// Operations and Business Development do not have
+// financial-record visibility.
+export function canViewFinancialRecords(
+  viewer: Viewer,
+) {
+  return ![
+    "Operations",
+    "Business Development",
+  ].includes(
+    viewer.department ?? "",
+  );
+}
+
+export type EditRequestEntityType =
+  | "client"
+  | "supplier"
+  | "subcontractor";
+
+const editRequestModuleByEntity:
+  Record<
+    EditRequestEntityType,
+    ModuleKey
+  > = {
+    client: "clients",
+    supplier: "suppliers",
+    subcontractor: "subcontractors",
+  };
+
+/**
+ * A staff member may submit an update request only
+ * for a record type their department is permitted
+ * to maintain.
+ */
+export function canSubmitEditRequest(
+  viewer: Viewer,
+  entityType: EditRequestEntityType,
+) {
+  return canAccess(
+    viewer,
+    editRequestModuleByEntity[entityType],
+    true,
+  );
+}
+
+/**
+ * Update-request approval is entity-aware rather
+ * than giving every Authorizer authority over
+ * every type of record.
+ *
+ * Client updates:
+ * - Business Development Authorizer
+ * - MD Office Authorizer
+ * - Super User
+ *
+ * Supplier/Subcontractor updates:
+ * - Finance & Admin Authorizer
+ * - MD Office Authorizer
+ * - Super User
+ */
+export function canDecideEditRequest(
+  viewer: Viewer,
+  entityType: EditRequestEntityType,
+) {
+  if (
+    viewer.roleName ===
+    "Super User"
+  ) {
+    return true;
+  }
+
+  if (
+    viewer.roleName !==
+    "Authorizer"
+  ) {
+    return false;
+  }
+
+  if (
+    entityType ===
+    "client"
+  ) {
+    return [
+      "Business Development",
+      "MD Office",
+    ].includes(
+      viewer.department ?? "",
+    );
+  }
+
+  return [
+    "Finance & Admin",
+    "MD Office",
+  ].includes(
     viewer.department ?? "",
   );
 }
