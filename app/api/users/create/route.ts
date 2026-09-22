@@ -204,6 +204,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: userError.message }, { status: 400 });
   }
 
+  // Every staff account also gets a personnel/onboarding record.
+  // The detailed information is completed from User Management after the
+  // account request has been created.
+  const { error: staffProfileError } = await admin.from("staffprofiles").insert({
+    userid: newUserId,
+    onboardingstatus: "Draft",
+    employmentstatus: "Active",
+    updatedbyuserid: callerProfile.userid,
+  });
+
+  if (staffProfileError) {
+    await admin.from("users").delete().eq("userid", newUserId);
+    await admin.auth.admin.deleteUser(newAuthUser.user.id);
+
+    return NextResponse.json(
+      {
+        error:
+          "The login account was created, but the staff personnel record could not be created: " +
+          staffProfileError.message,
+      },
+      { status: 400 },
+    );
+  }
+
   if (department === "Operations") {
     const { error: assignmentError } = await admin
       .from("projectassignments")

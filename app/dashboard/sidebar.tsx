@@ -64,7 +64,7 @@ export default function Sidebar({
     {
       label: "Admin",
       items: [
-        { href: "/dashboard/users", label: "User Management", icon: Users, module: "users" },
+        { href: "/dashboard/users", label: "Users & Staff Database", icon: Users, module: "users" },
         { href: "/dashboard/audit", label: "Audit Trail", icon: Landmark, module: "audit" },
         { href: "/dashboard/maintenance", label: "Master Data", icon: Wrench, module: "maintenance" },
         { href: "/dashboard/edit-requests", label: "Update Requests", icon: ClipboardEdit, module: "editRequests" },
