@@ -21,6 +21,12 @@ export const STAFF_DOCUMENT_MIME_TYPES = [
   "image/png",
 ] as const;
 
+export type StaffOnboardingStatus =
+  | "Draft"
+  | "Submitted"
+  | "Verified"
+  | "Account Created";
+
 export function canViewStaffRecord(viewer: Viewer) {
   return (
     viewer.userType === "Staff" &&
@@ -58,6 +64,20 @@ export function canVerifyStaffOnboarding(viewer: Viewer) {
     (viewer.roleName === "Super User" ||
       (viewer.department === "MD Office" &&
         ["Authorizer", "MD Office"].includes(viewer.roleName)))
+  );
+}
+
+/**
+ * Creating a FinCon Suite login is deliberately separate from personnel
+ * onboarding. Business Development can create normal staff accounts after a
+ * verified onboarding record exists. A Super User can do the same and is the
+ * only person who may assign the Super User role.
+ */
+export function canCreateStaffSystemAccount(viewer: Viewer) {
+  return (
+    viewer.userType === "Staff" &&
+    (viewer.roleName === "Super User" ||
+      viewer.department === "Business Development")
   );
 }
 

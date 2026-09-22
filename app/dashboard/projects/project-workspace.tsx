@@ -254,7 +254,7 @@ export default function ProjectWorkspace({
                         </th>
 
                         <th className="px-4 py-3">
-                          Approved inflow
+                          Inflow received
                         </th>
 
                         <th className="px-4 py-3">
@@ -263,6 +263,10 @@ export default function ProjectWorkspace({
 
                         <th className="px-4 py-3">
                           Cash position
+                        </th>
+
+                        <th className="px-4 py-3">
+                          Expected inflow
                         </th>
 
                         <th className="px-4 py-3">
@@ -280,6 +284,25 @@ export default function ProjectWorkspace({
                         const completed =
                           project.status ===
                           "Completed";
+
+                        const inflowReceived =
+                          Number(project.inflow ?? 0);
+
+                        const expenditure =
+                          Number(project.outflow ?? 0);
+
+                        const projectValue =
+                          Number(
+                            project.estimatedvalue ?? 0,
+                          );
+
+                        const cashPosition =
+                          inflowReceived -
+                          expenditure;
+
+                        const expectedInflow =
+                          projectValue -
+                          inflowReceived;
 
                         return (
                           <tr
@@ -325,14 +348,14 @@ export default function ProjectWorkspace({
 
                             {!canViewFinancial ? (
                               <td
-                                colSpan={3}
+                                colSpan={4}
                                 className="px-4 py-3"
                               >
                                 <RestrictedValue />
                               </td>
                             ) : completed ? (
                               <td
-                                colSpan={3}
+                                colSpan={4}
                                 className="px-4 py-3 text-xs text-slate-400"
                               >
                                 Financial records
@@ -344,28 +367,37 @@ export default function ProjectWorkspace({
                               <>
                                 <td className="px-4 py-3 text-green-700">
                                   {money(
-                                    project.inflow,
+                                    inflowReceived,
                                   )}
                                 </td>
 
                                 <td className="px-4 py-3 text-red-700">
                                   {money(
-                                    project.outflow,
+                                    expenditure,
                                   )}
                                 </td>
 
                                 <td
                                   className={`px-4 py-3 font-medium ${
-                                    project.inflow -
-                                      project.outflow <
-                                    0
+                                    cashPosition < 0
                                       ? "text-red-700"
                                       : "text-ink"
                                   }`}
                                 >
                                   {money(
-                                    project.inflow -
-                                      project.outflow,
+                                    cashPosition,
+                                  )}
+                                </td>
+
+                                <td
+                                  className={`px-4 py-3 font-medium ${
+                                    expectedInflow < 0
+                                      ? "text-red-700"
+                                      : "text-ink"
+                                  }`}
+                                >
+                                  {money(
+                                    expectedInflow,
                                   )}
                                 </td>
                               </>
