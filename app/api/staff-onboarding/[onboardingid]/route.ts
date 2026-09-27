@@ -6,12 +6,15 @@ import {
   canEditStaffOnboarding,
   canVerifyStaffOnboarding,
   canViewStaffRecord,
+  validateStaffAccessWindow,
 } from "@/lib/staff-records";
 
 const CORE_FIELDS = [
   "fullname",
   "email",
   "phonenumber",
+  "stafftype",
+  "accessexpirydate",
   "dateofbirth",
   "gender",
   "nationality",
@@ -81,11 +84,16 @@ function pickFields(source: Record<string, unknown>, allowed: readonly string[])
 }
 
 function hasAnyField(source: Record<string, unknown>, fields: readonly string[]) {
-  return fields.some((field) => Object.prototype.hasOwnProperty.call(source, field));
+  return fields.some((field) =>
+    Object.prototype.hasOwnProperty.call(source, field),
+  );
 }
 
 function normalizeNullableString(value: unknown) {
-  if (typeof value !== "string") return value ?? null;
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
 }
@@ -137,7 +145,10 @@ export async function GET(
   const onboardingid = Number(params.onboardingid);
 
   if (!Number.isInteger(onboardingid) || onboardingid <= 0) {
-    return NextResponse.json({ error: "Invalid onboarding record." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid onboarding record." },
+      { status: 400 },
+    );
   }
 
   const admin = createAdminClient();
@@ -164,7 +175,10 @@ export async function GET(
     ]);
 
   if (!onboarding) {
-    return NextResponse.json({ error: "Staff onboarding record not found." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Staff onboarding record not found." },
+      { status: 404 },
+    );
   }
 
   const visible = { ...onboarding } as Record<string, unknown>;
@@ -181,10 +195,11 @@ export async function GET(
   return NextResponse.json({
     onboarding: visible,
     references: references ?? [],
-    documents:
-      canEditSensitiveStaffData(viewer)
-        ? documents ?? []
-        : (documents ?? []).filter((document) => document.documenttype !== "Medical Result"),
+    documents: canEditSensitiveStaffData(viewer)
+      ? documents ?? []
+      : (documents ?? []).filter(
+          (document) => document.documenttype !== "Medical Result",
+        ),
   });
 }
 
@@ -201,7 +216,10 @@ export async function PATCH(
   const onboardingid = Number(params.onboardingid);
 
   if (!Number.isInteger(onboardingid) || onboardingid <= 0) {
-    return NextResponse.json({ error: "Invalid onboarding record." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid onboarding record." },
+      { status: 400 },
+    );
   }
 
   const body = await request.json();
@@ -213,7 +231,10 @@ export async function PATCH(
   const referencesInput = Array.isArray(body.references) ? body.references : [];
 
   if (!["save", "submit", "verify"].includes(action)) {
-    return NextResponse.json({ error: "Invalid onboarding action." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid onboarding action." },
+      { status: 400 },
+    );
   }
 
   const canEditCore = canEditStaffOnboarding(viewer);
@@ -243,7 +264,10 @@ export async function PATCH(
 
   if (hasAnyField(profileInput, ADMIN_FIELDS) && !canVerify) {
     return NextResponse.json(
-      { error: "Only an MD Office Authorizer or Super User may edit admin verification fields." },
+      {
+        error:
+          "Only an MD Office Authorizer or Super User may edit admin verification fields.",
+      },
       { status: 403 },
     );
   }
@@ -257,7 +281,10 @@ export async function PATCH(
     .maybeSingle();
 
   if (!current) {
-    return NextResponse.json({ error: "Staff onboarding record not found." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Staff onboarding record not found." },
+      { status: 404 },
+    );
   }
 
   if (current.onboardingstatus === "Account Created") {
@@ -294,8 +321,24 @@ export async function PATCH(
   updates = normalizeValues(updates);
 
   const merged = { ...current, ...updates } as Record<string, unknown>;
+  const staffType = String(merged.stafftype ?? "Permanent");
 
-  if (action === "submit") {
+  if (staffType === "Permanent") {
+    updates.accessexpirydate = null;
+    merged.accessexpirydate = null;
+  }
+
+  const accessError = validateStaffAccessWindow({
+    staffType,
+    accessExpiryDate: merged.accessexpirydate,
+    requireCurrentOrFuture: true,
+  });
+
+  if (accessError) {
+    return NextResponse.json({ error: accessError }, { status: 400 });
+  }
+
+  if (action === "submit" || action === "verify") {
     const fullname = String(merged.fullname ?? "").trim();
     const email = String(merged.email ?? "").trim();
     const phonenumber = String(merged.phonenumber ?? "").trim();
@@ -304,13 +347,19 @@ export async function PATCH(
 
     if (!fullname || !email || !phonenumber) {
       return NextResponse.json(
-        { error: "Full name, email address and phone number are required before submission." },
+        {
+          error:
+            "Full name, email address and phone number are required before submission.",
+        },
         { status: 400 },
       );
     }
 
     if (!email.includes("@")) {
-      return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Enter a valid email address." },
+        { status: 400 },
+      );
     }
 
     if (!merged.declarationconfirmed || !declarationName || !declarationDate) {
@@ -328,7 +377,10 @@ export async function PATCH(
     const email = String(updates.email ?? "").trim().toLowerCase();
 
     if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Enter a valid email address." },
+        { status: 400 },
+      );
     }
 
     const [{ data: otherOnboarding }, { data: existingUser }] = await Promise.all([
@@ -389,7 +441,9 @@ export async function PATCH(
     for (const reference of referencesInput.slice(0, 2)) {
       const number = Number(reference?.referencenumber);
 
-      if (![1, 2].includes(number)) continue;
+      if (![1, 2].includes(number)) {
+        continue;
+      }
 
       const clean = normalizeValues(
         pickFields(
@@ -413,7 +467,10 @@ export async function PATCH(
         );
 
       if (referenceError) {
-        return NextResponse.json({ error: referenceError.message }, { status: 400 });
+        return NextResponse.json(
+          { error: referenceError.message },
+          { status: 400 },
+        );
       }
     }
   }

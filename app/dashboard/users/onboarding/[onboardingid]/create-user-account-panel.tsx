@@ -24,6 +24,8 @@ export default function CreateUserAccountPanel({
     fullname: string;
     email: string;
     phonenumber: string;
+    stafftype: string;
+    accessexpirydate: string | null;
   };
   projects: Project[];
   canAssignSuperUser: boolean;
@@ -90,14 +92,14 @@ export default function CreateUserAccountPanel({
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             This onboarding record is verified. The staff member can now be
             granted application access if their role requires it. Their name,
-            email and phone number will be taken directly from the verified
-            personnel record.
+            email, phone number, staff type and any temporary-access expiry date
+            are inherited automatically from the verified personnel record.
           </p>
         </div>
         <span className="badge-success">Verified onboarding</span>
       </div>
 
-      <div className="mt-5 grid gap-3 rounded-md bg-slate-50 p-4 text-sm md:grid-cols-3">
+      <div className="mt-5 grid gap-3 rounded-md bg-slate-50 p-4 text-sm md:grid-cols-2 xl:grid-cols-5">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-400">Name</p>
           <p className="mt-1 font-medium text-ink">{staff.fullname}</p>
@@ -109,6 +111,22 @@ export default function CreateUserAccountPanel({
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-400">Phone</p>
           <p className="mt-1 font-medium text-ink">{staff.phonenumber}</p>
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-400">Staff type</p>
+          <p className="mt-1 font-medium text-ink">{staff.stafftype}</p>
+        </div>
+
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-400">Access expiry</p>
+          <p className="mt-1 font-medium text-ink">
+            {staff.accessexpirydate
+              ? new Date(`${staff.accessexpirydate}T00:00:00`).toLocaleDateString(
+                  "en-GB",
+                )
+              : "No automatic expiry"}
+          </p>
         </div>
       </div>
 

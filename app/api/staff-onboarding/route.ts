@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/viewer";
-import { canEditStaffOnboarding } from "@/lib/staff-records";
+import {
+  canEditStaffOnboarding,
+  validateStaffAccessWindow,
+} from "@/lib/staff-records";
 
 export async function POST(request: Request) {
   const viewer = await requireStaff();
@@ -18,6 +21,11 @@ export async function POST(request: Request) {
   const fullname = String(body.fullname ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
   const phonenumber = String(body.phonenumber ?? "").trim();
+  const stafftype = String(body.stafftype ?? "").trim();
+  const accessexpirydate =
+    typeof body.accessexpirydate === "string" && body.accessexpirydate.trim()
+      ? body.accessexpirydate.trim()
+      : null;
 
   if (!fullname || !email || !phonenumber) {
     return NextResponse.json(
@@ -33,6 +41,17 @@ export async function POST(request: Request) {
     );
   }
 
+  const accessError = validateStaffAccessWindow({
+    staffType: stafftype,
+    accessExpiryDate: accessexpirydate,
+    requireCurrentOrFuture: true,
+  });
+
+  if (accessError) {
+    return NextResponse.json({ error: accessError }, { status: 400 });
+  }
+
+  const normalizedExpiry = stafftype === "Permanent" ? null : accessexpirydate;
   const admin = createAdminClient();
 
   const [existingUserResult, existingOnboardingResult] = await Promise.all([
@@ -76,6 +95,8 @@ export async function POST(request: Request) {
       fullname,
       email,
       phonenumber,
+      stafftype,
+      accessexpirydate: normalizedExpiry,
       onboardingstatus: "Draft",
       employmentstatus: "Active",
       createdbyuserid: viewer.userId,

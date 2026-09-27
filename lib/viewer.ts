@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { canAccess, type ModuleKey } from "@/lib/access";
 import { deriveAccessLevel, type AccessLevel } from "@/lib/roles";
+import {
+  isStaffAccessExpired,
+  type StaffType,
+} from "@/lib/staff-records";
 
 export type Viewer = {
   userId: string;
@@ -11,25 +15,33 @@ export type Viewer = {
   roleName: string;
   department: string | null;
   accessLevel: AccessLevel;
+  staffType?: StaffType | null;
+  accessExpiryDate?: string | null;
 };
 
 export async function getViewer(): Promise<Viewer> {
   const supabase = createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) {
+    redirect("/login");
+  }
 
   const { data: profile } = await supabase
     .from("users")
     .select(
-      "userid, fullname, usertype, department, accesslevel, status, roles(rolename)",
+      "userid, fullname, usertype, department, accesslevel, status, stafftype, accessexpirydate, roles(rolename)",
     )
     .eq("authuserid", user.id)
     .single();
 
-  if (!profile) redirect("/login?error=profile");
+  if (!profile) {
+    redirect("/login?error=profile");
+  }
+
   if (profile.status && profile.status !== "Active") {
     redirect("/login?error=pending-approval");
   }
@@ -39,6 +51,19 @@ export async function getViewer(): Promise<Viewer> {
     "Unknown";
 
   const userType = profile.usertype as "Staff" | "Client";
+  const staffType =
+    userType === "Staff"
+      ? ((profile.stafftype ?? "Permanent") as StaffType)
+      : null;
+  const accessExpiryDate =
+    userType === "Staff" ? profile.accessexpirydate ?? null : null;
+
+  if (
+    userType === "Staff" &&
+    isStaffAccessExpired(staffType, accessExpiryDate)
+  ) {
+    redirect("/login?error=staff-access-expired");
+  }
 
   return {
     userId: profile.userid,
@@ -52,12 +77,18 @@ export async function getViewer(): Promise<Viewer> {
       roleName: role,
       storedAccessLevel: profile.accesslevel,
     }),
+    staffType,
+    accessExpiryDate,
   };
 }
 
 export async function requireStaff() {
   const viewer = await getViewer();
-  if (viewer.userType === "Client") redirect("/dashboard/portal");
+
+  if (viewer.userType === "Client") {
+    redirect("/dashboard/portal");
+  }
+
   return viewer;
 }
 
@@ -65,9 +96,11 @@ export async function requireStaff() {
 // so direct URL navigation is blocked, not just hidden from the sidebar.
 export async function requirePageAccess(module: ModuleKey, write = false) {
   const viewer = await requireStaff();
+
   if (!canAccess(viewer, module, write)) {
     redirect("/dashboard?error=forbidden");
   }
+
   return viewer;
 }
 
@@ -76,8 +109,16 @@ export async function requirePageAccess(module: ModuleKey, write = false) {
 // caller isn't allowed to write, instead of redirecting.
 export async function requireApiWriteAccess(module: ModuleKey) {
   const viewer = await requireStaff();
+
   if (!canAccess(viewer, module, true)) {
-    return { viewer: null, forbidden: true as const };
+    return {
+      viewer: null,
+      forbidden: true as const,
+    };
   }
-  return { viewer, forbidden: false as const };
+
+  return {
+    viewer,
+    forbidden: false as const,
+  };
 }

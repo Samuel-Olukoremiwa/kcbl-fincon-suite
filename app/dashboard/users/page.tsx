@@ -5,6 +5,8 @@ import { requirePageAccess } from "@/lib/viewer";
 import {
   canCreateStaffSystemAccount,
   canEditStaffOnboarding,
+  isStaffAccessExpired,
+  isTemporaryStaffType,
 } from "@/lib/staff-records";
 import {
   ASSIGNABLE_STAFF_ROLES,
@@ -52,7 +54,7 @@ export default async function UsersPage() {
       admin
         .from("users")
         .select(
-          "userid,fullname,email,usertype,status,department,accesslevel,roleid,roles(rolename)",
+          "userid,fullname,email,usertype,status,department,accesslevel,stafftype,accessexpirydate,roleid,roles(rolename)",
         )
         .eq("usertype", "Staff")
         .order("userid"),
@@ -62,7 +64,7 @@ export default async function UsersPage() {
       admin
         .from("staffonboarding")
         .select(
-          "onboardingid,fullname,email,phonenumber,staffidassigned,employmentstatus,onboardingstatus,createduserid,createdat,updatedat",
+          "onboardingid,fullname,email,phonenumber,staffidassigned,stafftype,accessexpirydate,employmentstatus,onboardingstatus,createduserid,createdat,updatedat",
         )
         .order("createdat", { ascending: false }),
     ]);
@@ -165,7 +167,18 @@ export default async function UsersPage() {
                     </td>
 
                     <td className="px-4 py-3 text-slate-600">
-                      {record.employmentstatus ?? "Active"}
+                      <p>{record.employmentstatus ?? "Active"}</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {record.stafftype ?? "Permanent"}
+                      </p>
+                      {isTemporaryStaffType(record.stafftype) &&
+                        record.accessexpirydate && (
+                          <p className="mt-1 text-xs text-amber-700">
+                            Access through {new Date(
+                              `${record.accessexpirydate}T00:00:00`,
+                            ).toLocaleDateString("en-GB")}
+                          </p>
+                        )}
                     </td>
 
                     <td className="px-4 py-3">
@@ -254,6 +267,11 @@ export default async function UsersPage() {
                   .join("")
                   .toUpperCase();
 
+                const accessExpired = isStaffAccessExpired(
+                  user.stafftype ?? "Permanent",
+                  user.accessexpirydate,
+                );
+
                 return (
                   <tr key={user.userid} className="row-interactive">
                     <td className="px-4 py-3">
@@ -278,22 +296,38 @@ export default async function UsersPage() {
                       <span className={ROLE_BADGE[roleLabel] ?? "badge-neutral"}>
                         {roleLabel}
                       </span>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {user.stafftype ?? "Permanent"}
+                        {user.accessexpirydate
+                          ? ` · through ${new Date(
+                              `${user.accessexpirydate}T00:00:00`,
+                            ).toLocaleDateString("en-GB")}`
+                          : ""}
+                      </p>
                     </td>
 
                     <td className="px-4 py-3">
                       <span
                         className={
                           "inline-flex items-center gap-1.5 " +
-                          (user.status === "Active" ? "badge-success" : "badge-neutral")
+                          (accessExpired
+                            ? "badge-danger"
+                            : user.status === "Active"
+                              ? "badge-success"
+                              : "badge-neutral")
                         }
                       >
                         <span
                           className={
                             "h-1.5 w-1.5 rounded-full " +
-                            (user.status === "Active" ? "bg-green-500" : "bg-slate-400")
+                            (accessExpired
+                              ? "bg-red-500"
+                              : user.status === "Active"
+                                ? "bg-green-500"
+                                : "bg-slate-400")
                           }
                         />
-                        {user.status}
+                        {accessExpired ? "Expired" : user.status}
                       </span>
                     </td>
 

@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import {
   MAX_STAFF_DOCUMENT_BYTES,
   STAFF_DOCUMENT_TYPES,
+  STAFF_TYPES,
+  isTemporaryStaffType,
 } from "@/lib/staff-records";
 
 type StaffProfile = Record<string, any>;
@@ -363,6 +365,48 @@ export default function StaffOnboardingForm({
             disabled={!permissions.canEditCore}
           />
         </div>
+      </Section>
+
+
+      <Section title="Employment Type & Access Period">
+        <div className="grid gap-4 md:grid-cols-2">
+          <SelectField
+            label="Staff type"
+            value={stringValue(profile.stafftype || "Permanent")}
+            values={[...STAFF_TYPES]}
+            onChange={(value) => {
+              setField("stafftype", value);
+
+              if (!isTemporaryStaffType(value)) {
+                setField("accessexpirydate", null);
+              }
+            }}
+            disabled={!permissions.canEditCore}
+          />
+
+          {isTemporaryStaffType(profile.stafftype || "Permanent") ? (
+            <Field
+              label="Access Expiry Date"
+              type="date"
+              value={stringValue(profile.accessexpirydate)}
+              onChange={(value) => setField("accessexpirydate", value)}
+              disabled={!permissions.canEditCore}
+              required
+            />
+          ) : (
+            <div className="rounded-md bg-slate-50 p-4 text-sm text-slate-500">
+              Permanent staff do not have an automatic access expiry date.
+            </div>
+          )}
+        </div>
+
+        {isTemporaryStaffType(profile.stafftype || "Permanent") && (
+          <p className="mt-3 rounded-md bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+            The selected date is the staff member&apos;s final valid access date.
+            FinCon Suite access will be blocked automatically from the following
+            day, while the personnel and audit records remain in the system.
+          </p>
+        )}
       </Section>
 
       <Section title="Educational & Professional Information">

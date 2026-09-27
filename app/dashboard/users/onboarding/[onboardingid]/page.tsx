@@ -10,6 +10,7 @@ import {
   canVerifyStaffOnboarding,
   canViewSensitiveStaffData,
   canViewStaffRecord,
+  isTemporaryStaffType,
 } from "@/lib/staff-records";
 import { SUPER_USER_ROLE } from "@/lib/roles";
 import StaffOnboardingForm from "./staff-onboarding-form";
@@ -145,6 +146,26 @@ export default async function StaffOnboardingRecordPage({
           <span className={accountCreated ? "badge-success" : "badge-neutral"}>
             System account: {accountCreated ? onboarding.createduserid : "Not created"}
           </span>
+
+          <span
+            className={
+              isTemporaryStaffType(onboarding.stafftype)
+                ? "badge-warning"
+                : "badge-neutral"
+            }
+          >
+            Staff type: {onboarding.stafftype ?? "Permanent"}
+          </span>
+
+          {isTemporaryStaffType(onboarding.stafftype) &&
+            onboarding.accessexpirydate && (
+              <span className="badge-warning">
+                Access through:{" "}
+                {new Date(
+                  `${onboarding.accessexpirydate}T00:00:00`,
+                ).toLocaleDateString("en-GB")}
+              </span>
+            )}
         </div>
       </header>
 
@@ -189,6 +210,8 @@ export default async function StaffOnboardingRecordPage({
               fullname: onboarding.fullname,
               email: onboarding.email,
               phonenumber: onboarding.phonenumber,
+              stafftype: onboarding.stafftype ?? "Permanent",
+              accessexpirydate: onboarding.accessexpirydate ?? null,
             }}
             projects={projects ?? []}
             canAssignSuperUser={viewer.roleName === SUPER_USER_ROLE}
