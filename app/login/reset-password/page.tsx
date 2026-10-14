@@ -1,244 +1,115 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
-  const router =
-    useRouter();
-
-  const [
-    ready,
-    setReady,
-  ] =
-    useState(false);
-
-  const [
-    password,
-    setPassword,
-  ] =
-    useState("");
-
-  const [
-    confirmPassword,
-    setConfirmPassword,
-  ] =
-    useState("");
-
-  const [
-    error,
-    setError,
-  ] =
-    useState<
-      string | null
-    >(null);
-
-  const [
-    saving,
-    setSaving,
-  ] =
-    useState(false);
-
-  const [
-    done,
-    setDone,
-  ] =
-    useState(false);
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const supabase =
-      createClient();
+    const supabase = createClient();
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
 
-    const params =
-      new URLSearchParams(
-        window.location.search,
-      );
-
-    const code =
-      params.get(
-        "code",
-      );
-
-    const {
-      data: listener,
-    } =
-      supabase.auth.onAuthStateChange(
-        (
-          event,
-        ) => {
-          if (
-            event ===
-            "PASSWORD_RECOVERY"
-          ) {
-            setError(
-              null,
-            );
-
-            setReady(
-              true,
-            );
-          }
-        },
-      );
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setError(null);
+        setReady(true);
+      }
+    });
 
     if (code) {
-      supabase.auth
-        .exchangeCodeForSession(
-          code,
-        )
-        .then(
-          ({
-            error:
-              exchangeError,
-          }) => {
-            if (
-              exchangeError
-            ) {
-              setError(
-                "This reset link is invalid or has expired. Please request a new one.",
-              );
-            } else {
-              setError(
-                null,
-              );
-
-              setReady(
-                true,
-              );
-            }
-          },
-        );
+      supabase.auth.exchangeCodeForSession(code).then(({ error: exchangeError }) => {
+        if (exchangeError) {
+          setError(
+            "This reset link is invalid or has expired. Please request a new one.",
+          );
+        } else {
+          setError(null);
+          setReady(true);
+        }
+      });
     } else {
-      const timeout =
-        setTimeout(
-          () => {
-            setReady(
-              (
-                current,
-              ) => {
-                if (
-                  !current
-                ) {
-                  setError(
-                    "This reset link is invalid or has expired. Please request a new one.",
-                  );
-                }
-
-                return current;
-              },
+      const timeout = setTimeout(() => {
+        setReady((current) => {
+          if (!current) {
+            setError(
+              "This reset link is invalid or has expired. Please request a new one.",
             );
-          },
-          5000,
-        );
+          }
+          return current;
+        });
+      }, 5000);
 
       return () => {
-        clearTimeout(
-          timeout,
-        );
-
+        clearTimeout(timeout);
         listener.subscription.unsubscribe();
       };
     }
 
-    return () =>
-      listener.subscription.unsubscribe();
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  async function submit(
-    e: React.FormEvent,
-  ) {
-    e.preventDefault();
-
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
     setError(null);
 
-    if (
-      password.length <
-      8
-    ) {
-      return setError(
-        "Password must be at least 8 characters.",
-      );
+    if (password.length < 8) {
+      return setError("Password must be at least 8 characters.");
     }
 
-    if (
-      !/[0-9]/.test(
-        password,
-      ) ||
-      !/[^a-zA-Z0-9]/.test(
-        password,
-      )
-    ) {
+    if (!/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
       return setError(
         "Password must include at least one number and one special character.",
       );
     }
 
-    if (
-      password !==
-      confirmPassword
-    ) {
-      return setError(
-        "Passwords do not match.",
-      );
+    if (password !== confirmPassword) {
+      return setError("Passwords do not match.");
     }
 
     setSaving(true);
+    const supabase = createClient();
 
-    const supabase =
-      createClient();
+    // The server changes the Supabase Auth password and clears the
+    // first-login flag in one controlled flow.
+    const response = await fetch("/api/auth/complete-password-change", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+    const result = await response.json();
 
-    const {
-      error:
-        updateError,
-    } =
-      await supabase.auth.updateUser({
-        password,
-      });
-
-    setSaving(false);
-
-    if (
-      updateError
-    ) {
+    if (!response.ok) {
+      setSaving(false);
       return setError(
-        updateError.message,
+        result.error ??
+          "Could not update your password. Please try again.",
       );
     }
 
+    await supabase.auth.signOut({ scope: "local" });
+    setSaving(false);
     setDone(true);
 
-    setTimeout(
-      () =>
-        router.push(
-          "/login",
-        ),
-      2000,
-    );
+    setTimeout(() => router.replace("/login?passwordChanged=1"), 1500);
   }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-navy px-4 py-12">
       <div className="mb-8 flex flex-col items-center text-center">
-        <Image
-          src="/kcbl-mark.png"
-          alt=""
-          width={
-            90
-          }
-          height={
-            90
-          }
-        />
-
-        <h1 className="mt-4 text-2xl font-bold text-white">
-          FinCon Suite
-        </h1>
-
+        <Image src="/kcbl-mark.png" alt="" width={90} height={90} />
+        <h1 className="mt-4 text-2xl font-bold text-white">FinCon Suite</h1>
         <p className="mt-1 text-sm text-white/60">
           Project Financial Control &amp; Performance Management
         </p>
@@ -258,77 +129,40 @@ export default function ResetPasswordPage() {
               role="alert"
               className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700"
             >
-              {
-                error
-              }
+              {error}
             </p>
           ) : (
-            <p className="text-sm text-slate-500">
-              Verifying your reset link…
-            </p>
+            <p className="text-sm text-slate-500">Verifying your reset link…</p>
           )
         ) : (
-          <form
-            onSubmit={
-              submit
-            }
-            noValidate
-          >
+          <form onSubmit={submit} noValidate>
             <div className="mb-4">
-              <label
-                htmlFor="password"
-                className="field-label"
-              >
+              <label htmlFor="password" className="field-label">
                 New password
               </label>
-
               <input
                 id="password"
                 type="password"
                 autoComplete="new-password"
                 required
-                value={
-                  password
-                }
-                onChange={(
-                  e,
-                ) =>
-                  setPassword(
-                    e
-                      .target
-                      .value,
-                  )
-                }
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
                 className="field-input"
                 placeholder="••••••••"
               />
             </div>
 
             <div className="mb-6">
-              <label
-                htmlFor="confirmPassword"
-                className="field-label"
-              >
+              <label htmlFor="confirmPassword" className="field-label">
                 Confirm new password
               </label>
-
               <input
                 id="confirmPassword"
                 type="password"
                 autoComplete="new-password"
                 required
-                value={
-                  confirmPassword
-                }
-                onChange={(
-                  e,
-                ) =>
-                  setConfirmPassword(
-                    e
-                      .target
-                      .value,
-                  )
-                }
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
                 className="field-input"
                 placeholder="••••••••"
               />
@@ -339,22 +173,16 @@ export default function ResetPasswordPage() {
                 role="alert"
                 className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700"
               >
-                {
-                  error
-                }
+                {error}
               </p>
             )}
 
             <button
               type="submit"
-              disabled={
-                saving
-              }
+              disabled={saving}
               className="btn-primary w-full"
             >
-              {saving
-                ? "Saving…"
-                : "Set new password"}
+              {saving ? "Saving…" : "Set new password"}
             </button>
           </form>
         )}

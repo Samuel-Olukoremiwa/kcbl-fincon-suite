@@ -1,7 +1,4 @@
 import { NextResponse } from "next/server";
-import {
-  createClient as createSupabaseClient,
-} from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/viewer";
 import {
@@ -14,6 +11,7 @@ import {
   canCreateStaffSystemAccount,
   validateStaffAccessWindow,
 } from "@/lib/staff-records";
+import { sendStaffWelcomeEmail } from "@/lib/mailer";
 
 const PROFILE_COPY_FIELDS = [
   "stafftype",
@@ -74,22 +72,25 @@ function pickProfile(
   onboarding: Record<string, any>,
 ) {
   return Object.fromEntries(
-    PROFILE_COPY_FIELDS.map(
-      (field) => [
-        field,
-        onboarding[field],
-      ],
-    ),
+    PROFILE_COPY_FIELDS.map((field) => [
+      field,
+      onboarding[field],
+    ]),
   );
 }
 
-function getAppUrl(
-  request: Request,
-) {
+function getAppUrl(request: Request) {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
     new URL(request.url).origin
   ).replace(/\/$/, "");
+}
+
+function generateTemporaryPassword() {
+  return `${crypto
+    .randomUUID()
+    .replace(/-/g, "")
+    .slice(0, 12)}!A1`;
 }
 
 export async function POST(
@@ -102,152 +103,101 @@ export async function POST(
     };
   },
 ) {
-  const viewer =
-    await requireStaff();
+  const viewer = await requireStaff();
 
-  if (
-    !canCreateStaffSystemAccount(
-      viewer,
-    )
-  ) {
+  if (!canCreateStaffSystemAccount(viewer)) {
     return NextResponse.json(
       {
         error:
           "Only Business Development or a Super User can create a system account from verified onboarding.",
       },
-      {
-        status: 403,
-      },
+      { status: 403 },
     );
   }
 
-  const onboardingid =
-    Number(
-      params.onboardingid,
-    );
+  const onboardingid = Number(
+    params.onboardingid,
+  );
 
   if (
-    !Number.isInteger(
-      onboardingid,
-    ) ||
+    !Number.isInteger(onboardingid) ||
     onboardingid <= 0
   ) {
     return NextResponse.json(
-      {
-        error:
-          "Invalid onboarding record.",
-      },
-      {
-        status: 400,
-      },
+      { error: "Invalid onboarding record." },
+      { status: 400 },
     );
   }
 
-  let body:
-    Record<string, unknown>;
+  let body: Record<string, unknown>;
 
   try {
-    body =
-      await request.json();
+    body = await request.json();
   } catch {
     return NextResponse.json(
-      {
-        error:
-          "Invalid request body.",
-      },
-      {
-        status: 400,
-      },
+      { error: "Invalid request body." },
+      { status: 400 },
     );
   }
 
-  const role =
-    String(
-      body.role ??
-        "",
-    ).trim();
+  const role = String(
+    body.role ?? "",
+  ).trim();
 
-  const department =
-    String(
-      body.department ??
-        "",
-    ).trim();
+  const department = String(
+    body.department ?? "",
+  ).trim();
 
-  const projectid =
-    String(
-      body.projectid ??
-        "",
-    ).trim();
+  const projectid = String(
+    body.projectid ?? "",
+  ).trim();
 
-  if (
-    !role ||
-    !department
-  ) {
+  if (!role || !department) {
     return NextResponse.json(
       {
         error:
           "Role and department are required.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
   if (
     !(
       ASSIGNABLE_STAFF_ROLES as readonly string[]
-    ).includes(
-      role,
-    )
+    ).includes(role)
   ) {
     return NextResponse.json(
-      {
-        error:
-          "Select a valid staff role.",
-      },
-      {
-        status: 400,
-      },
+      { error: "Select a valid staff role." },
+      { status: 400 },
     );
   }
 
-  if (
-    !isStaffDepartment(
-      department,
-    )
-  ) {
+  if (!isStaffDepartment(department)) {
     return NextResponse.json(
       {
         error:
           "Select a valid staff department.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
   if (
-    role ===
-      SUPER_USER_ROLE &&
-    viewer.roleName !==
-      SUPER_USER_ROLE
+    role === SUPER_USER_ROLE &&
+    viewer.roleName !== SUPER_USER_ROLE
   ) {
     return NextResponse.json(
       {
         error:
           "Only a current Super User can assign the Super User role.",
       },
-      {
-        status: 403,
-      },
+      { status: 403 },
     );
   }
 
   if (
-    department ===
-      "Operations" &&
+    department === "Operations" &&
     !projectid
   ) {
     return NextResponse.json(
@@ -255,44 +205,29 @@ export async function POST(
         error:
           "Operations staff must be assigned to a project code.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
-  const admin =
-    createAdminClient();
+  const admin = createAdminClient();
 
   const {
     data: onboarding,
-    error:
-      onboardingError,
+    error: onboardingError,
   } = await admin
-    .from(
-      "staffonboarding",
-    )
+    .from("staffonboarding")
     .select("*")
-    .eq(
-      "onboardingid",
-      onboardingid,
-    )
+    .eq("onboardingid", onboardingid)
     .maybeSingle();
 
-  if (
-    onboardingError ||
-    !onboarding
-  ) {
+  if (onboardingError || !onboarding) {
     return NextResponse.json(
       {
         error:
-          onboardingError
-            ?.message ??
+          onboardingError?.message ??
           "Staff onboarding record not found.",
       },
-      {
-        status: 404,
-      },
+      { status: 404 },
     );
   }
 
@@ -305,34 +240,24 @@ export async function POST(
         error:
           "Staff onboarding must be verified before a system account can be created.",
       },
-      {
-        status: 409,
-      },
+      { status: 409 },
     );
   }
 
-  if (
-    onboarding.createduserid
-  ) {
+  if (onboarding.createduserid) {
     return NextResponse.json(
       {
         error:
           "A system account has already been created for this staff member.",
-
-        userId:
-          onboarding.createduserid,
+        userId: onboarding.createduserid,
       },
-      {
-        status: 409,
-      },
+      { status: 409 },
     );
   }
 
-  const staffType =
-    String(
-      onboarding.stafftype ??
-        "Permanent",
-    ).trim();
+  const staffType = String(
+    onboarding.stafftype ?? "Permanent",
+  ).trim();
 
   const accessExpiryDate =
     typeof onboarding.accessexpirydate ===
@@ -342,16 +267,11 @@ export async function POST(
       : null;
 
   const accessError =
-    validateStaffAccessWindow(
-      {
-        staffType,
-
-        accessExpiryDate,
-
-        requireCurrentOrFuture:
-          true,
-      },
-    );
+    validateStaffAccessWindow({
+      staffType,
+      accessExpiryDate,
+      requireCurrentOrFuture: true,
+    });
 
   if (accessError) {
     return NextResponse.json(
@@ -360,72 +280,49 @@ export async function POST(
           accessError +
           " Update the staff onboarding record before creating a system account.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
   const normalizedAccessExpiryDate =
-    staffType ===
-    "Permanent"
+    staffType === "Permanent"
       ? null
       : accessExpiryDate;
 
-  const fullname =
-    String(
-      onboarding.fullname ??
-        "",
-    ).trim();
+  const fullname = String(
+    onboarding.fullname ?? "",
+  ).trim();
 
-  const email =
-    String(
-      onboarding.email ??
-        "",
-    )
-      .trim()
-      .toLowerCase();
+  const email = String(
+    onboarding.email ?? "",
+  )
+    .trim()
+    .toLowerCase();
 
-  const phonenumber =
-    String(
-      onboarding.phonenumber ??
-        "",
-    ).trim();
+  const phonenumber = String(
+    onboarding.phonenumber ?? "",
+  ).trim();
 
   if (
     !fullname ||
     !email ||
     !phonenumber ||
-    !email.includes(
-      "@",
-    )
+    !email.includes("@")
   ) {
     return NextResponse.json(
       {
         error:
           "The verified onboarding record is missing valid account identity details.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
-  if (
-    department ===
-    "Operations"
-  ) {
-    const {
-      data: project,
-    } = await admin
+  if (department === "Operations") {
+    const { data: project } = await admin
       .from("projects")
-      .select(
-        "projectid",
-      )
-      .eq(
-        "projectid",
-        projectid,
-      )
+      .select("projectid")
+      .eq("projectid", projectid)
       .maybeSingle();
 
     if (!project) {
@@ -434,157 +331,95 @@ export async function POST(
           error:
             "The selected project code does not exist.",
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
   }
 
   const [
     {
-      data:
-        roleRow,
-      error:
-        roleError,
+      data: roleRow,
+      error: roleError,
     },
-    {
-      data:
-        existingUser,
-    },
-  ] =
-    await Promise.all([
-      admin
-        .from("roles")
-        .select(
-          "roleid",
-        )
-        .eq(
-          "rolename",
-          role,
-        )
-        .single(),
+    { data: existingUser },
+  ] = await Promise.all([
+    admin
+      .from("roles")
+      .select("roleid")
+      .eq("rolename", role)
+      .single(),
 
-      admin
-        .from("users")
-        .select(
-          "userid",
-        )
-        .ilike(
-          "email",
-          email,
-        )
-        .limit(1)
-        .maybeSingle(),
-    ]);
+    admin
+      .from("users")
+      .select("userid")
+      .ilike("email", email)
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  if (
-    roleError ||
-    !roleRow
-  ) {
+  if (roleError || !roleRow) {
     return NextResponse.json(
       {
         error:
-          roleError
-            ?.message ??
+          roleError?.message ??
           "Could not find the selected staff role.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
-  if (
-    existingUser
-  ) {
+  if (existingUser) {
     return NextResponse.json(
       {
         error:
           "A system user already exists with this email address.",
       },
-      {
-        status: 409,
-      },
+      { status: 409 },
     );
   }
 
-  const {
-    data:
-      lastUser,
-  } = await admin
-    .from("users")
-    .select(
-      "userid",
-    )
-    .order(
-      "userid",
-      {
-        ascending:
-          false,
-      },
-    )
-    .limit(1)
-    .maybeSingle();
+  const { data: lastUser } =
+    await admin
+      .from("users")
+      .select("userid")
+      .order("userid", {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
 
-  const lastNumber =
-    lastUser
-      ? Number.parseInt(
-          String(
-            lastUser.userid,
-          ).replace(
-            "USR",
-            "",
-          ),
-          10,
-        )
-      : 0;
+  const lastNumber = lastUser
+    ? Number.parseInt(
+        String(lastUser.userid).replace(
+          "USR",
+          "",
+        ),
+        10,
+      )
+    : 0;
 
-  const nextNumber =
-    Number.isFinite(
-      lastNumber,
-    )
-      ? lastNumber +
-        1
-      : 1;
+  const nextNumber = Number.isFinite(
+    lastNumber,
+  )
+    ? lastNumber + 1
+    : 1;
 
-  const newUserId =
-    `USR${String(
-      nextNumber,
-    ).padStart(
-      5,
-      "0",
-    )}`;
+  const newUserId = `USR${String(
+    nextNumber,
+  ).padStart(5, "0")}`;
 
   const temporaryPassword =
-    `${crypto
-      .randomUUID()
-      .replace(
-        /-/g,
-        "",
-      )
-      .slice(
-        0,
-        10,
-      )}!A1`;
+    generateTemporaryPassword();
 
   const {
-    data:
-      newAuthUser,
-    error:
-      authError,
+    data: newAuthUser,
+    error: authError,
   } =
-    await admin.auth.admin.createUser(
-      {
-        email,
-
-        password:
-          temporaryPassword,
-
-        email_confirm:
-          true,
-      },
-    );
+    await admin.auth.admin.createUser({
+      email,
+      password: temporaryPassword,
+      email_confirm: true,
+    });
 
   if (
     authError ||
@@ -593,138 +428,74 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          authError
-            ?.message ??
+          authError?.message ??
           "Could not create the secure sign-in account.",
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
-  const authUser =
-    newAuthUser.user;
+  const authUser = newAuthUser.user;
 
   async function cleanupCreatedAccount() {
     await admin
-      .from(
-        "projectassignments",
-      )
+      .from("projectassignments")
       .delete()
-      .eq(
-        "userid",
-        newUserId,
-      );
+      .eq("userid", newUserId);
 
     await admin
-      .from(
-        "staffdocuments",
-      )
+      .from("staffdocuments")
       .delete()
-      .eq(
-        "userid",
-        newUserId,
-      );
+      .eq("userid", newUserId);
 
     await admin
-      .from(
-        "staffreferences",
-      )
+      .from("staffreferences")
       .delete()
-      .eq(
-        "userid",
-        newUserId,
-      );
+      .eq("userid", newUserId);
 
     await admin
-      .from(
-        "staffprofiles",
-      )
+      .from("staffprofiles")
       .delete()
-      .eq(
-        "userid",
-        newUserId,
-      );
+      .eq("userid", newUserId);
 
     await admin
       .from("users")
       .delete()
-      .eq(
-        "userid",
-        newUserId,
-      );
+      .eq("userid", newUserId);
 
     await admin.auth.admin.deleteUser(
       authUser.id,
     );
   }
 
-  const accessLevel =
-    deriveAccessLevel(
-      {
-        userType:
-          "Staff",
+  const accessLevel = deriveAccessLevel({
+    userType: "Staff",
+    roleName: role,
+  });
 
-        roleName:
-          role,
-      },
-    );
-
-  const {
-    error:
-      userError,
-  } = await admin
-    .from("users")
-    .insert({
-      userid:
-        newUserId,
-
+  const { error: userError } =
+    await admin.from("users").insert({
+      userid: newUserId,
       fullname,
-
-      usertype:
-        "Staff",
-
+      usertype: "Staff",
       email,
-
-      loginemail:
-        email,
-
+      loginemail: email,
       phonenumber,
-
       department,
-
-      accesslevel:
-        accessLevel,
-
-      stafftype:
-        staffType,
-
+      accesslevel: accessLevel,
+      stafftype: staffType,
       accessexpirydate:
         normalizedAccessExpiryDate,
-
-      roleid:
-        roleRow.roleid,
-
+      roleid: roleRow.roleid,
       passwordhash:
         "SUPABASE_AUTH_MANAGED",
-
-      status:
-        "Pending",
-
-      datecreated:
-        new Date()
-          .toISOString()
-          .slice(
-            0,
-            10,
-          ),
-
-      createdby:
-        viewer.userId,
-
-      authuserid:
-        authUser.id,
+      status: "Pending",
+      mustchangepassword: true,
+      datecreated: new Date()
+        .toISOString()
+        .slice(0, 10),
+      createdby: viewer.userId,
+      authuserid: authUser.id,
     });
 
   if (userError) {
@@ -733,45 +504,25 @@ export async function POST(
     );
 
     return NextResponse.json(
-      {
-        error:
-          userError.message,
-      },
-      {
-        status: 400,
-      },
+      { error: userError.message },
+      { status: 400 },
     );
   }
 
-  const {
-    error:
-      profileError,
-  } = await admin
-    .from(
-      "staffprofiles",
-    )
-    .insert({
-      userid:
-        newUserId,
-
-      ...pickProfile(
-        onboarding,
-      ),
-
-      onboardingstatus:
-        "Verified",
-
-      employmentstatus:
-        onboarding.employmentstatus ??
-        "Active",
-
-      updatedat:
-        new Date()
-          .toISOString(),
-
-      updatedbyuserid:
-        viewer.userId,
-    });
+  const { error: profileError } =
+    await admin
+      .from("staffprofiles")
+      .insert({
+        userid: newUserId,
+        ...pickProfile(onboarding),
+        onboardingstatus: "Verified",
+        employmentstatus:
+          onboarding.employmentstatus ??
+          "Active",
+        updatedat:
+          new Date().toISOString(),
+        updatedbyuserid: viewer.userId,
+      });
 
   if (profileError) {
     await cleanupCreatedAccount();
@@ -781,74 +532,41 @@ export async function POST(
         error:
           `Could not create the linked staff profile: ${profileError.message}`,
       },
-      {
-        status: 400,
-      },
+      { status: 400 },
     );
   }
 
   const [
-    {
-      data:
-        references,
-    },
-    {
-      data:
-        documents,
-    },
-  ] =
-    await Promise.all([
-      admin
-        .from(
-          "staffonboardingreferences",
-        )
-        .select(
-          "referencenumber,fullname,relationshipposition,organisation,address,phone",
-        )
-        .eq(
-          "onboardingid",
-          onboardingid,
-        ),
-
-      admin
-        .from(
-          "staffonboardingdocuments",
-        )
-        .select(
-          "documenttype,filename,storagepath,mimetype,filesize,uploadedbyuserid,uploadedat,verified,verifiedbyuserid,verifiedat,verificationremarks",
-        )
-        .eq(
-          "onboardingid",
-          onboardingid,
-        ),
-    ]);
-
-  if (
-    references?.length
-  ) {
-    const {
-      error:
-        referenceError,
-    } = await admin
-      .from(
-        "staffreferences",
+    { data: references },
+    { data: documents },
+  ] = await Promise.all([
+    admin
+      .from("staffonboardingreferences")
+      .select(
+        "referencenumber,fullname,relationshipposition,organisation,address,phone",
       )
-      .insert(
-        references.map(
-          (
-            reference,
-          ) => ({
-            userid:
-              newUserId,
+      .eq("onboardingid", onboardingid),
 
+    admin
+      .from("staffonboardingdocuments")
+      .select(
+        "documenttype,filename,storagepath,mimetype,filesize,uploadedbyuserid,uploadedat,verified,verifiedbyuserid,verifiedat,verificationremarks",
+      )
+      .eq("onboardingid", onboardingid),
+  ]);
+
+  if (references?.length) {
+    const { error: referenceError } =
+      await admin
+        .from("staffreferences")
+        .insert(
+          references.map((reference) => ({
+            userid: newUserId,
             ...reference,
-          }),
-        ),
-      );
+          })),
+        );
 
-    if (
-      referenceError
-    ) {
+    if (referenceError) {
       await cleanupCreatedAccount();
 
       return NextResponse.json(
@@ -856,39 +574,23 @@ export async function POST(
           error:
             `Could not copy staff references: ${referenceError.message}`,
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
   }
 
-  if (
-    documents?.length
-  ) {
-    const {
-      error:
-        documentError,
-    } = await admin
-      .from(
-        "staffdocuments",
-      )
-      .insert(
-        documents.map(
-          (
-            document,
-          ) => ({
-            userid:
-              newUserId,
-
+  if (documents?.length) {
+    const { error: documentError } =
+      await admin
+        .from("staffdocuments")
+        .insert(
+          documents.map((document) => ({
+            userid: newUserId,
             ...document,
-          }),
-        ),
-      );
+          })),
+        );
 
-    if (
-      documentError
-    ) {
+    if (documentError) {
       await cleanupCreatedAccount();
 
       return NextResponse.json(
@@ -896,46 +598,27 @@ export async function POST(
           error:
             `Could not copy staff documents: ${documentError.message}`,
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
   }
 
-  if (
-    department ===
-    "Operations"
-  ) {
-    const {
-      error:
-        assignmentError,
-    } = await admin
-      .from(
-        "projectassignments",
-      )
-      .insert({
-        projectid,
+  if (department === "Operations") {
+    const { error: assignmentError } =
+      await admin
+        .from("projectassignments")
+        .insert({
+          projectid,
+          userid: newUserId,
+          assignmentrole:
+            "Operations Staff",
+          assignedbyuserid:
+            viewer.userId,
+          approvalstatus: "Pending",
+          active: false,
+        });
 
-        userid:
-          newUserId,
-
-        assignmentrole:
-          "Operations Staff",
-
-        assignedbyuserid:
-          viewer.userId,
-
-        approvalstatus:
-          "Pending",
-
-        active:
-          false,
-      });
-
-    if (
-      assignmentError
-    ) {
+    if (assignmentError) {
       await cleanupCreatedAccount();
 
       return NextResponse.json(
@@ -943,168 +626,76 @@ export async function POST(
           error:
             `Could not create the Operations project assignment: ${assignmentError.message}`,
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
   }
 
   const {
-    data:
-      linkedOnboarding,
-    error:
-      linkError,
+    data: linkedOnboarding,
+    error: linkError,
   } = await admin
-    .from(
-      "staffonboarding",
-    )
+    .from("staffonboarding")
     .update({
       onboardingstatus:
         "Account Created",
-
-      createduserid:
-        newUserId,
-
+      createduserid: newUserId,
       accountcreatedat:
-        new Date()
-          .toISOString(),
-
+        new Date().toISOString(),
       accountcreatedbyuserid:
         viewer.userId,
-
       updatedat:
-        new Date()
-          .toISOString(),
-
-      updatedbyuserid:
-        viewer.userId,
+        new Date().toISOString(),
+      updatedbyuserid: viewer.userId,
     })
-    .eq(
-      "onboardingid",
-      onboardingid,
-    )
+    .eq("onboardingid", onboardingid)
     .eq(
       "onboardingstatus",
       "Verified",
     )
-    .is(
-      "createduserid",
-      null,
-    )
-    .select(
-      "onboardingid",
-    )
+    .is("createduserid", null)
+    .select("onboardingid")
     .maybeSingle();
 
-  if (
-    linkError ||
-    !linkedOnboarding
-  ) {
+  if (linkError || !linkedOnboarding) {
     await cleanupCreatedAccount();
 
     return NextResponse.json(
       {
         error:
-          linkError
-            ?.message ??
+          linkError?.message ??
           "This onboarding record was changed by another account-creation attempt. No duplicate account was kept.",
       },
-      {
-        status: 409,
-      },
+      { status: 409 },
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * SEND SECURE PASSWORD SETUP EMAIL
-   * ----------------------------------------------------------
-   */
-  let emailSent =
-    false;
+  const appUrl = getAppUrl(request);
 
-  let emailError:
-    string | null =
-    null;
+  const emailResult =
+    await sendStaffWelcomeEmail({
+      to: email,
+      staffName: fullname,
+      email,
+      temporaryPassword,
+      portalUrl: `${appUrl}/login`,
+    });
 
-  const appUrl =
-    getAppUrl(
-      request,
-    );
-
-  const passwordResetUrl =
-    `${appUrl}/login/reset-password`;
-
-  try {
-    const mailer =
-      createSupabaseClient(
-        process.env
-          .NEXT_PUBLIC_SUPABASE_URL!,
-
-        process.env
-          .NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-
-        {
-          auth: {
-            persistSession:
-              false,
-
-            autoRefreshToken:
-              false,
-
-            detectSessionInUrl:
-              false,
-          },
-        },
-      );
-
-    const {
-      error:
-        resetError,
-    } =
-      await mailer.auth.resetPasswordForEmail(
-        email,
-        {
-          redirectTo:
-            passwordResetUrl,
-        },
-      );
-
-    if (
-      resetError
-    ) {
-      emailError =
-        resetError.message;
-    } else {
-      emailSent =
-        true;
-    }
-  } catch (
-    error
-  ) {
-    emailError =
-      error instanceof Error
-        ? error.message
-        : "Password setup email failed.";
-  }
+  const emailSent = emailResult.sent;
+  const emailError = !emailResult.sent
+    ? emailResult.error ?? null
+    : null;
 
   return NextResponse.json(
     {
       ok: true,
-
-      userId:
-        newUserId,
-
+      userId: newUserId,
       emailSent,
-
       emailError,
-
-      message:
-        "System user account created from the verified onboarding record. MD Office must approve the account before sign-in.",
+      message: emailSent
+        ? "System user account created from the verified onboarding record. Temporary login details were emailed. MD Office must approve the account before sign-in."
+        : "System user account created from the verified onboarding record, but the temporary-login email could not be sent. MD Office must approve the account before sign-in.",
     },
-    {
-      status: 201,
-    },
+    { status: 201 },
   );
 }

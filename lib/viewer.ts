@@ -33,7 +33,7 @@ export async function getViewer(): Promise<Viewer> {
   const { data: profile } = await supabase
     .from("users")
     .select(
-      "userid, fullname, usertype, department, accesslevel, status, stafftype, accessexpirydate, roles(rolename)",
+      "userid, fullname, usertype, department, accesslevel, status, stafftype, accessexpirydate, mustchangepassword, roles(rolename)",
     )
     .eq("authuserid", user.id)
     .single();
@@ -65,6 +65,12 @@ export async function getViewer(): Promise<Viewer> {
     redirect("/login?error=staff-access-expired");
   }
 
+  const mustChangePassword = Boolean(profile.mustchangepassword);
+
+  if (mustChangePassword) {
+    redirect("/login/change-password");
+  }
+
   return {
     userId: profile.userid,
     authUserId: user.id,
@@ -92,8 +98,6 @@ export async function requireStaff() {
   return viewer;
 }
 
-// Server-side page guard. Use at the top of any dashboard module page.tsx
-// so direct URL navigation is blocked, not just hidden from the sidebar.
 export async function requirePageAccess(module: ModuleKey, write = false) {
   const viewer = await requireStaff();
 
@@ -104,9 +108,6 @@ export async function requirePageAccess(module: ModuleKey, write = false) {
   return viewer;
 }
 
-// Server-side API guard. Use at the top of any route.ts handler that
-// performs a write. Returns a Response to send back immediately if the
-// caller isn't allowed to write, instead of redirecting.
 export async function requireApiWriteAccess(module: ModuleKey) {
   const viewer = await requireStaff();
 

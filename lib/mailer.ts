@@ -34,19 +34,15 @@ export async function sendProjectReportEmail({
   }
 
   try {
-    const { error } =
-      await mailer.resend.emails.send({
-        from: mailer.fromEmail,
-        to,
-        subject,
-        html,
-      });
+    const { error } = await mailer.resend.emails.send({
+      from: mailer.fromEmail,
+      to,
+      subject,
+      html,
+    });
 
     if (error) {
-      console.error(
-        "Resend email error:",
-        error,
-      );
+      console.error("Resend email error:", error);
 
       return {
         sent: false,
@@ -54,14 +50,9 @@ export async function sendProjectReportEmail({
       };
     }
 
-    return {
-      sent: true,
-    };
+    return { sent: true };
   } catch (error) {
-    console.error(
-      "Unexpected Resend error:",
-      error,
-    );
+    console.error("Unexpected Resend error:", error);
 
     return {
       sent: false,
@@ -77,16 +68,16 @@ export async function sendClientWelcomeEmail({
   to,
   clientName,
   email,
+  temporaryPassword,
   portalUrl,
   isNewPortalAccount,
-  passwordSetupSent,
 }: {
   to: string;
   clientName: string;
   email: string;
+  temporaryPassword: string | null;
   portalUrl: string;
   isNewPortalAccount: boolean;
-  passwordSetupSent: boolean;
 }) {
   const mailer = getMailer();
 
@@ -98,157 +89,129 @@ export async function sendClientWelcomeEmail({
     };
   }
 
-  const safeName =
-    escapeHtml(clientName);
+  const safeName = escapeHtml(clientName);
+  const safeEmail = escapeHtml(email);
+  const safePortalUrl = escapeHtml(portalUrl);
+  const safeTemporaryPassword = temporaryPassword
+    ? escapeHtml(temporaryPassword)
+    : null;
 
-  const safeEmail =
-    escapeHtml(email);
+  const accountInstructions =
+    isNewPortalAccount && safeTemporaryPassword
+      ? `
+        <p>
+          Your Client Portal account has been created. Use the temporary
+          password below for your first sign-in.
+        </p>
 
-  const safePortalUrl =
-    escapeHtml(portalUrl);
+        <div
+          style="
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+          "
+        >
+          <p style="margin-top: 0;">
+            <strong>Login email:</strong>
+            ${safeEmail}
+          </p>
 
-  let passwordInstructions = "";
+          <p style="margin-bottom: 0;">
+            <strong>Temporary password:</strong>
+            ${safeTemporaryPassword}
+          </p>
+        </div>
 
-  if (
-    isNewPortalAccount &&
-    passwordSetupSent
-  ) {
-    passwordInstructions = `
-      <p>
-        A separate secure password setup email has
-        been sent to you.
-      </p>
+        <p>
+          You will be required to create your own password immediately
+          after your first successful sign-in before you can access the
+          Client Portal.
+        </p>
+      `
+      : `
+        <p>
+          This client record has been linked to your existing Client Portal
+          account.
+        </p>
 
-      <p>
-        Please open that email and use the password
-        setup link to create your password before
-        signing in to the Client Portal.
-      </p>
+        <div
+          style="
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+          "
+        >
+          <p style="margin: 0;">
+            <strong>Login email:</strong>
+            ${safeEmail}
+          </p>
+        </div>
 
-      <p>
-        If you do not see the password setup email,
-        please check your Spam or Junk folder.
-      </p>
-    `;
-  } else if (
-    isNewPortalAccount &&
-    !passwordSetupSent
-  ) {
-    passwordInstructions = `
-      <p>
-        Your Client Portal account has been created,
-        but the automatic password setup email could
-        not be sent.
-      </p>
-
-      <p>
-        Please open the Client Portal sign-in page
-        and use the <strong>Forgot Password</strong>
-        option to create your password.
-      </p>
-    `;
-  } else {
-    passwordInstructions = `
-      <p>
-        This client record has been linked to your
-        existing Client Portal account.
-      </p>
-
-      <p>
-        You may continue to use your existing login
-        email and password.
-      </p>
-    `;
-  }
+        <p>
+          Continue using your existing password. If you have forgotten it,
+          use the Forgot Password option on the sign-in page.
+        </p>
+      `;
 
   try {
-    const { error } =
-      await mailer.resend.emails.send({
-        from: mailer.fromEmail,
-        to,
-        subject:
-          "Your KCBL FinCon Suite Client Portal account",
+    const { error } = await mailer.resend.emails.send({
+      from: mailer.fromEmail,
+      to,
+      subject: "Your KCBL FinCon Suite Client Portal account",
+      html: `
+        <div
+          style="
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #1e293b;
+            max-width: 620px;
+            margin: 0 auto;
+          "
+        >
+          <h2>Welcome to KCBL FinCon Suite</h2>
 
-        html: `
-          <div
-            style="
-              font-family: Arial, sans-serif;
-              line-height: 1.6;
-              color: #1e293b;
-              max-width: 620px;
-              margin: 0 auto;
-            "
-          >
-            <h2>
-              Welcome to KCBL FinCon Suite
-            </h2>
+          <p>Hello ${safeName},</p>
 
-            <p>
-              Hello ${safeName},
-            </p>
+          ${accountInstructions}
 
-            <p>
-              Your Client Portal access has been
-              created successfully.
-            </p>
+          <p>You can access the Client Portal here:</p>
 
-            <div
+          <p>
+            <a
+              href="${safePortalUrl}"
               style="
-                background: #f8fafc;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                padding: 20px;
-                margin: 20px 0;
+                display: inline-block;
+                background: #0f172a;
+                color: #ffffff;
+                text-decoration: none;
+                padding: 12px 18px;
+                border-radius: 6px;
+                font-weight: 600;
               "
             >
-              <p style="margin: 0;">
-                <strong>Login email:</strong>
-                ${safeEmail}
-              </p>
-            </div>
+              Open Client Portal
+            </a>
+          </p>
 
-            ${passwordInstructions}
+          <p>
+            Please keep your login information private and do not share
+            your password with anyone.
+          </p>
 
-            <p>
-              You can access the Client Portal here:
-            </p>
-
-            <p>
-              <a
-                href="${safePortalUrl}"
-                style="
-                  display: inline-block;
-                  background: #0f172a;
-                  color: #ffffff;
-                  text-decoration: none;
-                  padding: 12px 18px;
-                  border-radius: 6px;
-                  font-weight: 600;
-                "
-              >
-                Open Client Portal
-              </a>
-            </p>
-
-            <p>
-              Please keep your login information
-              private and do not share your password
-              with anyone.
-            </p>
-
-            <p>
-              Regards,<br />
-              KCBL FinCon Suite
-            </p>
-          </div>
-        `,
-      });
+          <p>
+            Regards,<br />
+            KCBL FinCon Suite
+          </p>
+        </div>
+      `,
+    });
 
     if (error) {
-      console.error(
-        "Client welcome email error:",
-        error,
-      );
+      console.error("Client welcome email error:", error);
 
       return {
         sent: false,
@@ -256,14 +219,141 @@ export async function sendClientWelcomeEmail({
       };
     }
 
-    return {
-      sent: true,
-    };
+    return { sent: true };
   } catch (error) {
-    console.error(
-      "Unexpected client welcome email error:",
-      error,
-    );
+    console.error("Unexpected client welcome email error:", error);
+
+    return {
+      sent: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unknown email error.",
+    };
+  }
+}
+
+export async function sendStaffWelcomeEmail({
+  to,
+  staffName,
+  email,
+  temporaryPassword,
+  portalUrl,
+}: {
+  to: string;
+  staffName: string;
+  email: string;
+  temporaryPassword: string;
+  portalUrl: string;
+}) {
+  const mailer = getMailer();
+
+  if (!mailer) {
+    return {
+      sent: false,
+      error:
+        "RESEND_API_KEY or RESEND_FROM_EMAIL is not configured.",
+    };
+  }
+
+  const safeName = escapeHtml(staffName);
+  const safeEmail = escapeHtml(email);
+  const safeTemporaryPassword = escapeHtml(temporaryPassword);
+  const safePortalUrl = escapeHtml(portalUrl);
+
+  try {
+    const { error } = await mailer.resend.emails.send({
+      from: mailer.fromEmail,
+      to,
+      subject: "Your KCBL FinCon Suite staff account",
+      html: `
+        <div
+          style="
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #1e293b;
+            max-width: 620px;
+            margin: 0 auto;
+          "
+        >
+          <h2>Welcome to KCBL FinCon Suite</h2>
+
+          <p>Hello ${safeName},</p>
+
+          <p>
+            Your FinCon Suite staff account has been created and is
+            awaiting final account approval.
+          </p>
+
+          <div
+            style="
+              background: #f8fafc;
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              padding: 20px;
+              margin: 20px 0;
+            "
+          >
+            <p style="margin-top: 0;">
+              <strong>Login email:</strong>
+              ${safeEmail}
+            </p>
+
+            <p style="margin-bottom: 0;">
+              <strong>Temporary password:</strong>
+              ${safeTemporaryPassword}
+            </p>
+          </div>
+
+          <p>
+            Once your account has been approved, sign in using the
+            temporary password above. You will be required to create your
+            own password immediately after your first successful sign-in
+            before you can access the system.
+          </p>
+
+          <p>
+            <a
+              href="${safePortalUrl}"
+              style="
+                display: inline-block;
+                background: #0f172a;
+                color: #ffffff;
+                text-decoration: none;
+                padding: 12px 18px;
+                border-radius: 6px;
+                font-weight: 600;
+              "
+            >
+              Open FinCon Suite
+            </a>
+          </p>
+
+          <p>
+            Please keep your login information private and do not share
+            your password with anyone.
+          </p>
+
+          <p>
+            Regards,<br />
+            KCBL FinCon Suite
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error("Staff welcome email error:", error);
+
+      return {
+        sent: false,
+        error: error.message,
+      };
+    }
+
+    return { sent: true };
+  } catch (error) {
+    console.error("Unexpected staff welcome email error:", error);
 
     return {
       sent: false,

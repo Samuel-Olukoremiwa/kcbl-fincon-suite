@@ -18,6 +18,13 @@ export default function LoginForm() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const loginError = params.get("error");
+    const passwordChanged = params.get("passwordChanged");
+
+    if (passwordChanged === "1") {
+      setResetNotice(
+        "Your password has been updated. Sign in with your new password.",
+      );
+    }
 
     if (!loginError) {
       return;
@@ -25,9 +32,6 @@ export default function LoginForm() {
 
     if (loginError === "staff-access-expired") {
       const supabase = createClient();
-
-      // Expired temporary staff are cleared from the local session as soon as
-      // they reach the login screen after the server-side access check blocks them.
       void supabase.auth.signOut({ scope: "local" });
 
       setError(
@@ -37,30 +41,34 @@ export default function LoginForm() {
     }
 
     if (loginError === "pending-approval") {
-      setError("Your account is not active yet. Please contact an administrator.");
+      setError(
+        "Your account is not active yet. Please contact an administrator.",
+      );
       return;
     }
 
     if (loginError === "profile") {
-      setError("Your user profile could not be loaded. Please contact an administrator.");
+      setError(
+        "Your user profile could not be loaded. Please contact an administrator.",
+      );
     }
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setError(null);
+    setResetNotice(null);
     setLoading(true);
 
     const supabase = createClient();
 
-    // A timeout or blocked temporary-staff session can leave an expired local
-    // token in browser storage. Clear it locally before starting a fresh session.
     await supabase.auth.signOut({ scope: "local" });
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
     if (signInError) {
       setError(
@@ -72,6 +80,9 @@ export default function LoginForm() {
       return;
     }
 
+    // The dashboard server guard checks mustchangepassword.
+    // New users are redirected to /login/change-password before any
+    // dashboard or client-portal content is shown.
     router.push("/dashboard");
     router.refresh();
   }
@@ -90,12 +101,10 @@ export default function LoginForm() {
 
     const supabase = createClient();
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email,
-      {
+    const { error: resetError } =
+      await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/login/reset-password`,
-      },
-    );
+      });
 
     setLoading(false);
 
@@ -184,7 +193,11 @@ export default function LoginForm() {
         </p>
       )}
 
-      <button type="submit" disabled={loading} className="btn-primary w-full">
+      <button
+        type="submit"
+        disabled={loading}
+        className="btn-primary w-full"
+      >
         {loading ? "Signing in…" : "Sign in"}
       </button>
     </form>
