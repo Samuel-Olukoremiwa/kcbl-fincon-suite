@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireApiWriteAccess } from "@/lib/viewer";
 import { nextPrefixedId } from "@/lib/client-utils";
 import { canCreateClientOrProject } from "@/lib/access";
@@ -40,14 +41,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const clientid = normalizeText(body.clientid);
-  const title = normalizeText(body.title);
-  const location = normalizeText(body.location);
-  const type = normalizeText(body.type);
-  const value = Number(body.value);
-  const start = normalizeText(body.start);
-  const end = normalizeText(body.end);
-  const manager = normalizeText(body.manager);
+  const clientid =
+    normalizeText(body.clientid);
+
+  const title =
+    normalizeText(body.title);
+
+  const location =
+    normalizeText(body.location);
+
+  const type =
+    normalizeText(body.type);
+
+  const value =
+    Number(body.value);
+
+  const start =
+    normalizeText(body.start);
+
+  const end =
+    normalizeText(body.end);
+
+  const manager =
+    normalizeText(body.manager);
 
   if (!clientid) {
     return NextResponse.json(
@@ -119,13 +135,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createClient();
+  const supabase =
+    createClient();
 
-  /*
-   * ----------------------------------------------------------
-   * VERIFY CLIENT
-   * ----------------------------------------------------------
-   */
   const {
     data: client,
     error: clientError,
@@ -155,12 +167,10 @@ export async function POST(request: Request) {
   }
 
   /*
-   * ----------------------------------------------------------
-   * DUPLICATE PROJECT SAFEGUARD
+   * Duplicate safeguard.
    *
-   * A client cannot have two projects with the same
-   * project title and project location.
-   * ----------------------------------------------------------
+   * Same client + same project title + same location
+   * cannot be created twice.
    */
   const {
     data: existingClientProjects,
@@ -170,7 +180,10 @@ export async function POST(request: Request) {
     .select(
       "projectid,projecttitle,projectlocation",
     )
-    .eq("clientid", clientid);
+    .eq(
+      "clientid",
+      clientid,
+    );
 
   if (duplicateCheckError) {
     return NextResponse.json(
@@ -189,7 +202,10 @@ export async function POST(request: Request) {
     location.toLowerCase();
 
   const duplicateProject =
-    (existingClientProjects ?? []).find(
+    (
+      existingClientProjects ??
+      []
+    ).find(
       (project) =>
         normalizeText(
           project.projecttitle,
@@ -207,6 +223,7 @@ export async function POST(request: Request) {
         error:
           `This project already exists as ${duplicateProject.projectid}. ` +
           "A client cannot have more than one project with the same title and location.",
+
         projectid:
           duplicateProject.projectid,
       },
@@ -214,11 +231,6 @@ export async function POST(request: Request) {
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * VERIFY PROJECT MANAGER
-   * ----------------------------------------------------------
-   */
   if (manager) {
     const {
       data: managerUser,
@@ -228,7 +240,10 @@ export async function POST(request: Request) {
       .select(
         "userid,usertype,status",
       )
-      .eq("userid", manager)
+      .eq(
+        "userid",
+        manager,
+      )
       .maybeSingle();
 
     if (
@@ -245,8 +260,10 @@ export async function POST(request: Request) {
     }
 
     if (
-      managerUser.usertype !== "Staff" ||
-      managerUser.status !== "Active"
+      managerUser.usertype !==
+        "Staff" ||
+      managerUser.status !==
+        "Active"
     ) {
       return NextResponse.json(
         {
@@ -258,16 +275,6 @@ export async function POST(request: Request) {
     }
   }
 
-  /*
-   * ----------------------------------------------------------
-   * GENERATE PROJECT ID
-   *
-   * PRJ001
-   * PRJ002
-   * PRJ003
-   * ...
-   * ----------------------------------------------------------
-   */
   const {
     data: existingProjects,
     error: existingError,
@@ -285,20 +292,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const projectid = nextPrefixedId(
-    (existingProjects ?? []).map(
-      (project) =>
-        project.projectid,
-    ),
-    "PRJ",
-    3,
-  );
-
   /*
-   * ----------------------------------------------------------
-   * CREATE PROJECT
-   * ----------------------------------------------------------
+   * PRJ001
+   * PRJ002
+   * PRJ003
+   * ...
    */
+  const projectid =
+    nextPrefixedId(
+      (
+        existingProjects ??
+        []
+      ).map(
+        (project) =>
+          project.projectid,
+      ),
+      "PRJ",
+      3,
+    );
+
   const {
     error: insertError,
   } = await supabase
@@ -306,29 +318,44 @@ export async function POST(request: Request) {
     .insert({
       projectid,
       clientid,
-      projecttitle: title,
-      projectlocation: location,
-      projecttype: type,
-      estimatedvalue: value,
+
+      projecttitle:
+        title,
+
+      projectlocation:
+        location,
+
+      projecttype:
+        type,
+
+      estimatedvalue:
+        value,
+
       startdate:
         start || null,
+
       expectedenddate:
         end || null,
-      status: "Pending",
+
+      status:
+        "Pending",
+
       projectmanageruserid:
         manager || null,
+
       datecreated:
         new Date()
           .toISOString()
-          .slice(0, 10),
+          .slice(
+            0,
+            10,
+          ),
     });
 
   if (insertError) {
-    /*
-     * Database unique constraint.
-     */
     if (
-      insertError.code === "23505"
+      insertError.code ===
+      "23505"
     ) {
       const duplicateConstraint =
         insertError.message
@@ -337,7 +364,9 @@ export async function POST(request: Request) {
             "ux_projects_client_title_location",
           );
 
-      if (duplicateConstraint) {
+      if (
+        duplicateConstraint
+      ) {
         return NextResponse.json(
           {
             error:
@@ -358,25 +387,24 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: insertError.message,
+        error:
+          insertError.message,
       },
       { status: 400 },
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * AUDIT LOG
-   * ----------------------------------------------------------
-   */
   const {
     error: auditError,
   } = await supabase
-    .from("makercheckerauditlog")
+    .from(
+      "makercheckerauditlog",
+    )
     .insert({
-      logid: `LOG${Date.now()
-        .toString()
-        .slice(-9)}`,
+      logid:
+        `LOG${Date.now()
+          .toString()
+          .slice(-9)}`,
 
       transactiontype:
         "Project",
@@ -393,12 +421,18 @@ export async function POST(request: Request) {
       actiondate:
         new Date()
           .toISOString()
-          .slice(0, 10),
+          .slice(
+            0,
+            10,
+          ),
 
       actiontime:
         new Date()
           .toTimeString()
-          .slice(0, 8),
+          .slice(
+            0,
+            8,
+          ),
 
       comments:
         title,
@@ -414,6 +448,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       projectid,
+
       message:
         "Project created successfully.",
     },
@@ -421,7 +456,9 @@ export async function POST(request: Request) {
   );
 }
 
-export async function PATCH(request: Request) {
+export async function PATCH(
+  request: Request,
+) {
   const {
     viewer,
     forbidden,
@@ -459,7 +496,10 @@ export async function PATCH(request: Request) {
   }
 
   let body:
-    Record<string, unknown>;
+    Record<
+      string,
+      unknown
+    >;
 
   try {
     body =
@@ -509,11 +549,6 @@ export async function PATCH(request: Request) {
   const supabase =
     createClient();
 
-  /*
-   * ----------------------------------------------------------
-   * GET CURRENT PROJECT STATUS
-   * ----------------------------------------------------------
-   */
   const {
     data: project,
     error: projectError,
@@ -550,11 +585,6 @@ export async function PATCH(request: Request) {
     });
   }
 
-  /*
-   * ----------------------------------------------------------
-   * UPDATE STATUS
-   * ----------------------------------------------------------
-   */
   const {
     error: updateError,
   } = await supabase
@@ -577,11 +607,6 @@ export async function PATCH(request: Request) {
     );
   }
 
-  /*
-   * ----------------------------------------------------------
-   * AUDIT STATUS CHANGE
-   * ----------------------------------------------------------
-   */
   const {
     error: auditError,
   } = await supabase
@@ -589,9 +614,10 @@ export async function PATCH(request: Request) {
       "makercheckerauditlog",
     )
     .insert({
-      logid: `LOG${Date.now()
-        .toString()
-        .slice(-9)}`,
+      logid:
+        `LOG${Date.now()
+          .toString()
+          .slice(-9)}`,
 
       transactiontype:
         "Project",
@@ -608,12 +634,18 @@ export async function PATCH(request: Request) {
       actiondate:
         new Date()
           .toISOString()
-          .slice(0, 10),
+          .slice(
+            0,
+            10,
+          ),
 
       actiontime:
         new Date()
           .toTimeString()
-          .slice(0, 8),
+          .slice(
+            0,
+            8,
+          ),
 
       comments:
         `Status changed from ${project.status} to ${status}`,
@@ -628,5 +660,391 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({
     ok: true,
+  });
+}
+
+/*
+ * ============================================================
+ * DELETE PROJECT
+ *
+ * Permanent deletion is SUPER USER ONLY.
+ *
+ * A project that already has operational history cannot be
+ * permanently deleted. It should be completed/archived instead.
+ * ============================================================
+ */
+export async function DELETE(
+  request: Request,
+) {
+  const {
+    viewer,
+    forbidden,
+  } =
+    await requireApiWriteAccess(
+      "projects",
+    );
+
+  if (
+    forbidden ||
+    !viewer
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Not authorized to delete projects.",
+      },
+      { status: 403 },
+    );
+  }
+
+  if (
+    viewer.roleName !==
+    "Super User"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Only a Super User can permanently delete a project.",
+      },
+      { status: 403 },
+    );
+  }
+
+  let body:
+    Record<
+      string,
+      unknown
+    >;
+
+  try {
+    body =
+      await request.json();
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Invalid request body.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const projectid =
+    normalizeText(
+      body.projectid,
+    );
+
+  if (!projectid) {
+    return NextResponse.json(
+      {
+        error:
+          "Project ID is required.",
+      },
+      { status: 400 },
+    );
+  }
+
+  /*
+   * Use the admin client only after the authenticated user's
+   * Super User role has been verified above.
+   */
+  const admin =
+    createAdminClient();
+
+  const {
+    data: project,
+    error: projectError,
+  } = await admin
+    .from("projects")
+    .select(
+      "projectid,projecttitle,clientid,status",
+    )
+    .eq(
+      "projectid",
+      projectid,
+    )
+    .maybeSingle();
+
+  if (
+    projectError
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          projectError.message,
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!project) {
+    return NextResponse.json(
+      {
+        error:
+          "Project not found.",
+      },
+      { status: 404 },
+    );
+  }
+
+  /*
+   * Check for linked operational records.
+   */
+  const [
+    inflowResult,
+    outflowResult,
+    reportResult,
+    assignmentResult,
+  ] =
+    await Promise.all([
+      admin
+        .from(
+          "cashinflowreceivables",
+        )
+        .select(
+          "transactionid",
+          {
+            count:
+              "exact",
+            head:
+              true,
+          },
+        )
+        .eq(
+          "projectid",
+          projectid,
+        ),
+
+      admin
+        .from(
+          "cashoutflowexpenditure",
+        )
+        .select(
+          "transactionid",
+          {
+            count:
+              "exact",
+            head:
+              true,
+          },
+        )
+        .eq(
+          "projectid",
+          projectid,
+        ),
+
+      admin
+        .from(
+          "projectreports",
+        )
+        .select(
+          "reportid",
+          {
+            count:
+              "exact",
+            head:
+              true,
+          },
+        )
+        .eq(
+          "projectid",
+          projectid,
+        ),
+
+      admin
+        .from(
+          "projectassignments",
+        )
+        .select(
+          "projectid",
+          {
+            count:
+              "exact",
+            head:
+              true,
+          },
+        )
+        .eq(
+          "projectid",
+          projectid,
+        ),
+    ]);
+
+  const dependencyError =
+    inflowResult.error ||
+    outflowResult.error ||
+    reportResult.error ||
+    assignmentResult.error;
+
+  if (
+    dependencyError
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          `Could not verify project dependencies: ${dependencyError.message}`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const inflowCount =
+    inflowResult.count ??
+    0;
+
+  const outflowCount =
+    outflowResult.count ??
+    0;
+
+  const reportCount =
+    reportResult.count ??
+    0;
+
+  const assignmentCount =
+    assignmentResult.count ??
+    0;
+
+  if (
+    inflowCount >
+      0 ||
+    outflowCount >
+      0 ||
+    reportCount >
+      0 ||
+    assignmentCount >
+      0
+  ) {
+    const reasons:
+      string[] = [];
+
+    if (
+      inflowCount >
+      0
+    ) {
+      reasons.push(
+        `${inflowCount} cash inflow record(s)`,
+      );
+    }
+
+    if (
+      outflowCount >
+      0
+    ) {
+      reasons.push(
+        `${outflowCount} expenditure record(s)`,
+      );
+    }
+
+    if (
+      reportCount >
+      0
+    ) {
+      reasons.push(
+        `${reportCount} progress report(s)`,
+      );
+    }
+
+    if (
+      assignmentCount >
+      0
+    ) {
+      reasons.push(
+        `${assignmentCount} staff assignment(s)`,
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error:
+          `This project cannot be permanently deleted because it has ${reasons.join(
+            ", ",
+          )}. Use the normal project completion/archive process instead.`,
+      },
+      { status: 409 },
+    );
+  }
+
+  const {
+    error: deleteError,
+  } = await admin
+    .from("projects")
+    .delete()
+    .eq(
+      "projectid",
+      projectid,
+    );
+
+  if (deleteError) {
+    return NextResponse.json(
+      {
+        error:
+          deleteError.message,
+      },
+      { status: 400 },
+    );
+  }
+
+  /*
+   * Keep an audit record even though the project itself
+   * has been deleted.
+   */
+  const {
+    error: auditError,
+  } = await admin
+    .from(
+      "makercheckerauditlog",
+    )
+    .insert({
+      logid:
+        `LOG${Date.now()
+          .toString()
+          .slice(-9)}`,
+
+      transactiontype:
+        "Project",
+
+      transactionid:
+        projectid,
+
+      actiontype:
+        "Deleted",
+
+      actionbyuserid:
+        viewer.userId,
+
+      actiondate:
+        new Date()
+          .toISOString()
+          .slice(
+            0,
+            10,
+          ),
+
+      actiontime:
+        new Date()
+          .toTimeString()
+          .slice(
+            0,
+            8,
+          ),
+
+      comments:
+        `Permanently deleted project: ${project.projecttitle}`,
+    });
+
+  if (auditError) {
+    console.error(
+      "Project deletion audit log failed:",
+      auditError,
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+
+    projectid,
+
+    message:
+      "Project deleted successfully.",
   });
 }

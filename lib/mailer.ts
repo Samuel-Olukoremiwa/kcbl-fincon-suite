@@ -77,16 +77,16 @@ export async function sendClientWelcomeEmail({
   to,
   clientName,
   email,
-  temporaryPassword,
-  resetLink,
   portalUrl,
+  isNewPortalAccount,
+  passwordSetupSent,
 }: {
   to: string;
   clientName: string;
   email: string;
-  temporaryPassword: string;
-  resetLink: string;
   portalUrl: string;
+  isNewPortalAccount: boolean;
+  passwordSetupSent: boolean;
 }) {
   const mailer = getMailer();
 
@@ -100,14 +100,66 @@ export async function sendClientWelcomeEmail({
 
   const safeName =
     escapeHtml(clientName);
+
   const safeEmail =
     escapeHtml(email);
-  const safePassword =
-    escapeHtml(temporaryPassword);
-  const safeResetLink =
-    escapeHtml(resetLink);
+
   const safePortalUrl =
     escapeHtml(portalUrl);
+
+  let passwordInstructions = "";
+
+  if (
+    isNewPortalAccount &&
+    passwordSetupSent
+  ) {
+    passwordInstructions = `
+      <p>
+        A separate secure password setup email has
+        been sent to you.
+      </p>
+
+      <p>
+        Please open that email and use the password
+        setup link to create your password before
+        signing in to the Client Portal.
+      </p>
+
+      <p>
+        If you do not see the password setup email,
+        please check your Spam or Junk folder.
+      </p>
+    `;
+  } else if (
+    isNewPortalAccount &&
+    !passwordSetupSent
+  ) {
+    passwordInstructions = `
+      <p>
+        Your Client Portal account has been created,
+        but the automatic password setup email could
+        not be sent.
+      </p>
+
+      <p>
+        Please open the Client Portal sign-in page
+        and use the <strong>Forgot Password</strong>
+        option to create your password.
+      </p>
+    `;
+  } else {
+    passwordInstructions = `
+      <p>
+        This client record has been linked to your
+        existing Client Portal account.
+      </p>
+
+      <p>
+        You may continue to use your existing login
+        email and password.
+      </p>
+    `;
+  }
 
   try {
     const { error } =
@@ -116,6 +168,7 @@ export async function sendClientWelcomeEmail({
         to,
         subject:
           "Your KCBL FinCon Suite Client Portal account",
+
         html: `
           <div
             style="
@@ -135,8 +188,8 @@ export async function sendClientWelcomeEmail({
             </p>
 
             <p>
-              Your Client Portal account has
-              been created successfully.
+              Your Client Portal access has been
+              created successfully.
             </p>
 
             <div
@@ -148,26 +201,21 @@ export async function sendClientWelcomeEmail({
                 margin: 20px 0;
               "
             >
-              <p style="margin-top: 0;">
+              <p style="margin: 0;">
                 <strong>Login email:</strong>
                 ${safeEmail}
               </p>
-
-              <p>
-                <strong>Temporary password:</strong>
-                ${safePassword}
-              </p>
             </div>
 
+            ${passwordInstructions}
+
             <p>
-              For security, please use the password
-              reset link below to set your own password
-              before continuing to use the portal.
+              You can access the Client Portal here:
             </p>
 
             <p>
               <a
-                href="${safeResetLink}"
+                href="${safePortalUrl}"
                 style="
                   display: inline-block;
                   background: #0f172a;
@@ -178,23 +226,14 @@ export async function sendClientWelcomeEmail({
                   font-weight: 600;
                 "
               >
-                Set / Reset Your Password
+                Open Client Portal
               </a>
             </p>
 
             <p>
-              You can access the Client Portal here:
-            </p>
-
-            <p>
-              <a href="${safePortalUrl}">
-                ${safePortalUrl}
-              </a>
-            </p>
-
-            <p>
-              Please keep your login information private
-              and do not share your password with anyone.
+              Please keep your login information
+              private and do not share your password
+              with anyone.
             </p>
 
             <p>

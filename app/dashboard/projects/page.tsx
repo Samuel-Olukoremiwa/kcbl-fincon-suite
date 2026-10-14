@@ -67,12 +67,7 @@ export default async function ProjectsPage() {
       ];
 
   /*
-   * ONLY AUTHORIZED reports affect displayed progress.
-   *
-   * Ordering:
-   *   newest reporting week
-   *   newest updated report within that week
-   *   newest report ID as final tie-breaker
+   * Only AUTHORIZED reports affect displayed progress.
    */
   const {
     data: authorizedReports,
@@ -132,22 +127,26 @@ export default async function ProjectsPage() {
       }
     >();
 
-  /*
-   * Since the records are already sorted newest-first,
-   * the first authorized report for each project is the
-   * current displayed progress.
-   */
-  (authorizedReports ?? []).forEach((report) => {
-    if (!progressByProject.has(report.projectid)) {
-      progressByProject.set(
-        report.projectid,
-        {
-          pct: Number(report.progresspct),
-          week: report.reportweek,
-        },
-      );
-    }
-  });
+  (authorizedReports ?? []).forEach(
+    (report) => {
+      if (
+        !progressByProject.has(
+          report.projectid,
+        )
+      ) {
+        progressByProject.set(
+          report.projectid,
+          {
+            pct: Number(
+              report.progresspct,
+            ),
+            week:
+              report.reportweek,
+          },
+        );
+      }
+    },
+  );
 
   const totals = (
     rows: {
@@ -156,15 +155,29 @@ export default async function ProjectsPage() {
       approvalstatus: string;
     }[],
   ) =>
-    rows.reduce<Record<string, number>>(
-      (all, row) => {
+    rows.reduce<
+      Record<string, number>
+    >(
+      (
+        all,
+        row,
+      ) => {
         if (
           row.projectid &&
-          row.approvalstatus === "Approved"
+          row.approvalstatus ===
+            "Approved"
         ) {
-          all[row.projectid] =
-            (all[row.projectid] ?? 0) +
-            Number(row.amount);
+          all[
+            row.projectid
+          ] =
+            (
+              all[
+                row.projectid
+              ] ?? 0
+            ) +
+            Number(
+              row.amount,
+            );
         }
 
         return all;
@@ -172,42 +185,71 @@ export default async function ProjectsPage() {
       {},
     );
 
-  const inflow = totals(inflows ?? []);
-  const outflow = totals(outflows ?? []);
+  const inflow =
+    totals(
+      inflows ?? [],
+    );
+
+  const outflow =
+    totals(
+      outflows ?? [],
+    );
 
   const clientNames =
     new Map(
-      (clients ?? []).map((client) => [
-        client.clientid,
-        client.fullnameorcompanyname,
-      ]),
+      (
+        clients ??
+        []
+      ).map(
+        (
+          client,
+        ) => [
+          client.clientid,
+          client.fullnameorcompanyname,
+        ],
+      ),
     );
 
   const projectRows =
-    (projects ?? []).map((project: any) => ({
-      ...project,
+    (
+      projects ??
+      []
+    ).map(
+      (
+        project: any,
+      ) => ({
+        ...project,
 
-      clientName:
-        clientNames.get(project.clientid) ??
-        "Unassigned",
+        clientName:
+          clientNames.get(
+            project.clientid,
+          ) ??
+          "Unassigned",
 
-      inflow:
-        inflow[project.projectid] ?? 0,
+        inflow:
+          inflow[
+            project.projectid
+          ] ?? 0,
 
-      outflow:
-        outflow[project.projectid] ?? 0,
+        outflow:
+          outflow[
+            project.projectid
+          ] ?? 0,
 
-      progress:
-        progressByProject.get(
-          project.projectid,
-        ) ?? null,
-    }));
+        progress:
+          progressByProject.get(
+            project.projectid,
+          ) ?? null,
+      }),
+    );
 
   return (
     <div>
       <header className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
-          <Building2 size={20} />
+          <Building2
+            size={20}
+          />
         </div>
 
         <div>
@@ -223,16 +265,41 @@ export default async function ProjectsPage() {
       </header>
 
       <ProjectWorkspace
-        projects={projectRows}
-        clients={clients ?? []}
-        managers={managers ?? []}
-        canEdit={
-          viewer.roleName === "Super User" ||
-          (viewer.department === "MD Office" &&
-            ["Authorizer", "MD Office"].includes(viewer.roleName))
+        projects={
+          projectRows
         }
-        canCreate={canCreateClientOrProject(viewer)}
-        canViewFinancial={canViewFinancial}
+        clients={
+          clients ?? []
+        }
+        managers={
+          managers ?? []
+        }
+        canEdit={
+          viewer.roleName ===
+            "Super User" ||
+          (
+            viewer.department ===
+              "MD Office" &&
+            [
+              "Authorizer",
+              "MD Office",
+            ].includes(
+              viewer.roleName,
+            )
+          )
+        }
+        canCreate={
+          canCreateClientOrProject(
+            viewer,
+          )
+        }
+        canDelete={
+          viewer.roleName ===
+          "Super User"
+        }
+        canViewFinancial={
+          canViewFinancial
+        }
       />
     </div>
   );
