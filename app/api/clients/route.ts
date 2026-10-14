@@ -2,9 +2,6 @@ import { NextResponse } from "next/server";
 import {
   createClient as createSupabaseAuthClient,
 } from "@supabase/supabase-js";
-import {
-  createClient as createServerClient,
-} from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { nextPrefixedId } from "@/lib/client-utils";
 import {
@@ -16,6 +13,13 @@ import {
 import {
   sendClientWelcomeEmail,
 } from "@/lib/mailer";
+
+function getAppUrl(request: Request) {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    new URL(request.url).origin
+  ).replace(/\/$/, "");
+}
 
 export async function POST(
   request: Request,
@@ -194,9 +198,6 @@ export async function POST(
     );
   }
 
-  const supabase =
-    createServerClient();
-
   const admin =
     createAdminClient();
 
@@ -241,10 +242,12 @@ export async function POST(
     );
 
   const individual =
-    type === "Individual";
+    type ===
+    "Individual";
 
   const corporate =
-    type === "Corporate";
+    type ===
+    "Corporate";
 
   /*
    * ----------------------------------------------------------
@@ -385,10 +388,6 @@ export async function POST(
   if (
     !existingLinkedUser
   ) {
-    /*
-     * Check application users first so we can return a useful
-     * message before attempting Supabase Auth creation.
-     */
     const {
       data:
         existingAppUser,
@@ -422,7 +421,9 @@ export async function POST(
       data: lastUser,
     } = await admin
       .from("users")
-      .select("userid")
+      .select(
+        "userid",
+      )
       .order(
         "userid",
         {
@@ -462,12 +463,6 @@ export async function POST(
         "0",
       )}`;
 
-    /*
-     * A random password is used only internally to create the
-     * Supabase Auth identity.
-     *
-     * It is deliberately NOT emailed to the client.
-     */
     const temporaryPassword =
       `${crypto
         .randomUUID()
@@ -523,9 +518,6 @@ export async function POST(
     createdAuthUser =
       true;
 
-    /*
-     * Create the application user.
-     */
     const {
       error:
         userError,
@@ -581,9 +573,6 @@ export async function POST(
       });
 
     if (userError) {
-      /*
-       * Prevent orphaned Supabase Auth accounts.
-       */
       const {
         error:
           cleanupError,
@@ -692,9 +681,6 @@ export async function POST(
     });
 
   if (clientError) {
-    /*
-     * Remove the newly created application user first.
-     */
     if (
       createdDatabaseUser &&
       userId
@@ -720,9 +706,6 @@ export async function POST(
       }
     }
 
-    /*
-     * Then remove its Auth identity.
-     */
     if (
       createdAuthUser &&
       authUserId
@@ -995,27 +978,21 @@ export async function POST(
    * ----------------------------------------------------------
    * EMAILS
    *
-   * IMPORTANT:
-   *
-   * Do NOT generate a Supabase action_link and place that
-   * single-use URL inside the Resend welcome email.
-   *
-   * Some email security scanners automatically open links and
-   * can consume single-use authentication tokens.
-   *
-   * Instead, use the same Supabase password-reset flow that is
-   * already working for normal password resets.
+   * Use a fixed production application URL from
+   * NEXT_PUBLIC_APP_URL so Vercel preview/internal hostnames
+   * are never placed into password setup emails.
    * ----------------------------------------------------------
    */
+  const appUrl =
+    getAppUrl(
+      request,
+    );
+
   const portalUrl =
-    `${new URL(
-      request.url,
-    ).origin}/login`;
+    `${appUrl}/login`;
 
   const passwordResetUrl =
-    `${new URL(
-      request.url,
-    ).origin}/login/reset-password`;
+    `${appUrl}/login/reset-password`;
 
   let passwordSetupSent =
     !createdAuthUser;
@@ -1027,8 +1004,8 @@ export async function POST(
     string[] = [];
 
   /*
-   * Only newly created portal identities need an initial
-   * password setup email.
+   * Only a newly created Client Portal identity needs the
+   * initial password setup email.
    */
   if (
     createdAuthUser &&
@@ -1092,9 +1069,8 @@ export async function POST(
   }
 
   /*
-   * Send the ordinary welcome email through Resend.
-   *
-   * This email contains NO one-time authentication token.
+   * The Resend welcome email intentionally contains no raw
+   * Supabase one-time authentication URL.
    */
   if (authUserId) {
     const welcomeResult =
