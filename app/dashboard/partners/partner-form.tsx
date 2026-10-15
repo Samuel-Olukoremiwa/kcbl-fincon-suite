@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const SUPPLIER_CATEGORIES = [
@@ -22,16 +22,16 @@ const SUBCONTRACTOR_CATEGORIES = [
   "Aluminium/Glazing Workers",
 ];
 
-function customCategoryKey(
-  kind: "supplier" | "subcontractor",
-) {
+type PartnerKind = "supplier" | "subcontractor";
+
+function customCategoryKey(kind: PartnerKind) {
   return `kcbl-custom-categories-${kind}`;
 }
 
-function loadCustomCategories(
-  kind: "supplier" | "subcontractor",
-) {
-  if (typeof window === "undefined") return [];
+function loadCustomCategories(kind: PartnerKind) {
+  if (typeof window === "undefined") {
+    return [];
+  }
 
   try {
     const raw = window.localStorage.getItem(
@@ -45,7 +45,7 @@ function loadCustomCategories(
 }
 
 function saveCustomCategory(
-  kind: "supplier" | "subcontractor",
+  kind: PartnerKind,
   value: string,
 ) {
   try {
@@ -58,7 +58,7 @@ function saveCustomCategory(
       );
     }
   } catch {
-    // localStorage unavailable.
+    // localStorage may be unavailable.
   }
 }
 
@@ -66,61 +66,100 @@ export default function PartnerForm({
   kind,
   existingIds,
 }: {
-  kind: "supplier" | "subcontractor";
+  kind: PartnerKind;
   existingIds?: string[];
 }) {
-  const r = useRouter();
+  const router = useRouter();
+
+  void existingIds;
+
+  const supplier = kind === "supplier";
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(
     null,
   );
+  const [customCategories, setCustomCategories] =
+    useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] =
+    useState<string[]>([]);
+  const [otherCategory, setOtherCategory] =
+    useState("");
 
-  const supplier = kind === "supplier";
+  useEffect(() => {
+    setCustomCategories(loadCustomCategories(kind));
+    setSelectedCategories([]);
+    setOtherCategory("");
+  }, [kind]);
 
   const baseCategories = supplier
     ? SUPPLIER_CATEGORIES
     : SUBCONTRACTOR_CATEGORIES;
 
-  const [customCategories, setCustomCategories] =
-    useState<string[]>([]);
+  const allCategories = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...baseCategories,
+          ...customCategories,
+        ]),
+      ),
+    [baseCategories, customCategories],
+  );
 
-  useEffect(() => {
-    setCustomCategories(loadCustomCategories(kind));
-  }, [kind]);
+  function toggleCategory(category: string) {
+    setSelectedCategories((current) =>
+      current.includes(category)
+        ? current.filter((value) => value !== category)
+        : [...current, category],
+    );
+  }
 
-  const [category, setCategory] = useState("");
-  const [otherCategory, setOtherCategory] =
-    useState("");
+  function addOtherCategory() {
+    const value = otherCategory
+      .trim()
+      .replace(/\s+/g, " ");
 
-  const isOther = category === "__other__";
+    if (!value) {
+      return;
+    }
 
-  const allCategories = [
-    ...baseCategories,
-    ...customCategories,
-  ];
+    saveCustomCategory(kind, value);
+
+    setCustomCategories((current) =>
+      current.includes(value)
+        ? current
+        : [...current, value],
+    );
+
+    setSelectedCategories((current) =>
+      current.includes(value)
+        ? current
+        : [...current, value],
+    );
+
+    setOtherCategory("");
+  }
 
   async function submit(
-    e: React.FormEvent<HTMLFormElement>,
+    event: React.FormEvent<HTMLFormElement>,
   ) {
-    e.preventDefault();
+    event.preventDefault();
+
+    const form = event.currentTarget;
 
     setSaving(true);
     setMessage(null);
 
     try {
-      const f = new FormData(e.currentTarget);
+      const data = new FormData(form);
 
-      const g = (name: string) =>
-        String(f.get(name) ?? "").trim();
+      const get = (name: string) =>
+        String(data.get(name) ?? "").trim();
 
-      const finalCategory = isOther
-        ? otherCategory.trim()
-        : category;
-
-      if (!finalCategory) {
+      if (!selectedCategories.length) {
         setMessage(
-          `Please select or enter a ${
+          `Select at least one ${
             supplier
               ? "supply category"
               : "trade specialty"
@@ -129,18 +168,20 @@ export default function PartnerForm({
         return;
       }
 
-      const name = g("name");
+      const name = get("name");
 
       if (!name) {
         setMessage(
           `Please enter the ${
-            supplier ? "supplier" : "subcontractor"
+            supplier
+              ? "supplier"
+              : "subcontractor"
           } name.`,
         );
         return;
       }
 
-      const res = await fetch("/api/partners", {
+      const response = await fetch("/api/partners", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -148,16 +189,16 @@ export default function PartnerForm({
         body: JSON.stringify({
           kind,
           name,
-          specialty: finalCategory,
-          contact: g("contact"),
-          phone: g("phone"),
-          email: g("email"),
-          address: g("address"),
-          description: g("description"),
-          accountName: g("accountName"),
-          accountNumber: g("accountNumber"),
-          bank: g("bank"),
-          status: g("status") || "Active",
+          specialties: selectedCategories,
+          contact: get("contact"),
+          phone: get("phone"),
+          email: get("email"),
+          address: get("address"),
+          description: get("description"),
+          accountName: get("accountName"),
+          accountNumber: get("accountNumber"),
+          bank: get("bank"),
+          status: get("status") || "Active",
         }),
       });
 
@@ -167,14 +208,15 @@ export default function PartnerForm({
       };
 
       try {
-        result = await res.json();
+        result = await response.json();
       } catch {
         result = {
-          error: "The server returned an invalid response.",
+          error:
+            "The server returned an invalid response.",
         };
       }
 
-      if (!res.ok) {
+      if (!response.ok) {
         setMessage(
           result.error ??
             `Unable to create ${kind}.`,
@@ -182,35 +224,27 @@ export default function PartnerForm({
         return;
       }
 
-      if (isOther && finalCategory) {
-        saveCustomCategory(
-          kind,
-          finalCategory,
-        );
-
-        setCustomCategories((prev) =>
-          prev.includes(finalCategory)
-            ? prev
-            : [...prev, finalCategory],
-        );
-      }
-
-      e.currentTarget.reset();
-
-      setCategory("");
+      form.reset();
+      setSelectedCategories([]);
       setOtherCategory("");
 
       setMessage(
         result.id
           ? `${result.id} created successfully.`
-          : `${supplier ? "Supplier" : "Subcontractor"} created successfully.`,
+          : `${
+              supplier
+                ? "Supplier"
+                : "Subcontractor"
+            } created successfully.`,
       );
 
-      r.refresh();
+      router.refresh();
     } catch {
       setMessage(
         `Unable to create ${
-          supplier ? "supplier" : "subcontractor"
+          supplier
+            ? "supplier"
+            : "subcontractor"
         }. Please try again.`,
       );
     } finally {
@@ -224,11 +258,15 @@ export default function PartnerForm({
     required = true,
   ) => (
     <div>
-      <label className="field-label">
+      <label
+        className="field-label"
+        htmlFor={name}
+      >
         {label}
       </label>
 
       <input
+        id={name}
         name={name}
         required={required}
         maxLength={
@@ -256,50 +294,61 @@ export default function PartnerForm({
         <div>
           <label className="field-label">
             {supplier
-              ? "Supply category"
-              : "Trade specialty"}
+              ? "Supply categories"
+              : "Trade specialties"}
           </label>
 
-          <select
-            value={category}
-            onChange={(e) =>
-              setCategory(e.target.value)
-            }
-            required
-            className="field-input"
-          >
-            <option value="">
-              Select…
-            </option>
+          <p className="mb-2 text-xs text-slate-500">
+            Select one or more.
+          </p>
 
-            {allCategories.map((c) => (
-              <option
-                key={c}
-                value={c}
+          <div className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+            {allCategories.map((category) => (
+              <label
+                key={category}
+                className="flex cursor-pointer items-center gap-2 text-sm text-slate-700"
               >
-                {c}
-              </option>
+                <input
+                  type="checkbox"
+                  checked={selectedCategories.includes(
+                    category,
+                  )}
+                  onChange={() =>
+                    toggleCategory(category)
+                  }
+                />
+
+                <span>{category}</span>
+              </label>
             ))}
+          </div>
 
-            <option value="__other__">
-              Other…
-            </option>
-          </select>
-
-          {isOther && (
+          <div className="mt-3 flex gap-2">
             <input
               value={otherCategory}
-              onChange={(e) =>
-                setOtherCategory(e.target.value)
+              onChange={(event) =>
+                setOtherCategory(event.target.value)
               }
-              placeholder={`Enter ${
-                supplier
-                  ? "supply category"
-                  : "trade specialty"
+              placeholder={`Add another ${
+                supplier ? "category" : "specialty"
               }`}
-              required
-              className="field-input mt-2"
+              className="field-input"
             />
+
+            <button
+              type="button"
+              onClick={addOtherCategory}
+              className="btn-secondary shrink-0"
+            >
+              Add
+            </button>
+          </div>
+
+          {!!selectedCategories.length && (
+            <p className="mt-2 text-xs text-slate-500">
+              Selected:{" "}
+              {selectedCategories.join(", ")}
+            </p>
           )}
         </div>
 
@@ -322,17 +371,18 @@ export default function PartnerForm({
           false,
         )}
 
-        {field(
-          "Address",
-          "address",
-        )}
+        {field("Address", "address")}
 
         <div>
-          <label className="field-label">
+          <label
+            className="field-label"
+            htmlFor="description"
+          >
             Description / narration
           </label>
 
           <textarea
+            id="description"
             name="description"
             rows={3}
             placeholder="Notes about this partner (optional)"
@@ -362,11 +412,15 @@ export default function PartnerForm({
         </div>
 
         <div>
-          <label className="field-label">
+          <label
+            className="field-label"
+            htmlFor="status"
+          >
             Status
           </label>
 
           <select
+            id="status"
             name="status"
             defaultValue="Active"
             className="field-input"
@@ -385,8 +439,12 @@ export default function PartnerForm({
       {message && (
         <p
           className={`mt-3 text-sm ${
-            message.toLowerCase().includes("success") ||
-            message.toLowerCase().includes("created")
+            message
+              .toLowerCase()
+              .includes("success") ||
+            message
+              .toLowerCase()
+              .includes("created")
               ? "text-emerald-600"
               : "text-red-600"
           }`}

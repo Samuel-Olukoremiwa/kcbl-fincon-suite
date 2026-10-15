@@ -3,65 +3,124 @@ import { createClient } from "@/lib/supabase/server";
 import { requireApiWriteAccess } from "@/lib/viewer";
 import { nextPrefixedId } from "@/lib/client-utils";
 
-export async function POST(request: Request) {
+function currentLagosDate() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone: "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      },
+    ).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [
+      part.type,
+      part.value,
+    ]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export async function POST(
+  request: Request,
+) {
   const { viewer, forbidden } =
-    await requireApiWriteAccess("transactions");
+    await requireApiWriteAccess(
+      "transactions",
+    );
 
   if (forbidden || !viewer) {
     return NextResponse.json(
       {
-        error: "Not authorized to submit expenditure.",
+        error:
+          "Not authorized to submit expenditure.",
       },
       { status: 403 },
     );
   }
 
-  if (viewer.roleName === "Authorizer") {
+  if (
+    viewer.roleName === "Authorizer"
+  ) {
     return NextResponse.json(
       {
-        error: "Authorizers cannot submit new transactions.",
+        error:
+          "Authorizers cannot submit new transactions.",
       },
       { status: 403 },
     );
   }
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
 
-  const projectid = String(body.projectid ?? "").trim();
-  const payeetype = String(body.payeetype ?? "").trim();
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
+  const projectid = String(
+    body.projectid ?? "",
+  ).trim();
+
+  const payeetype = String(
+    body.payeetype ?? "",
+  ).trim();
+
   const payeeid = body.payeeid
     ? String(body.payeeid).trim()
     : null;
-  const category = String(body.category ?? "").trim();
+
+  const category = String(
+    body.category ?? "",
+  ).trim();
+
   const amount = Number(body.amount);
-  const transactionDate = String(body.date ?? "").trim();
-  const paymentMethod = String(body.method ?? "").trim();
+
+  const transactionDate = String(
+    body.date ?? "",
+  ).trim();
+
+  const paymentMethod = String(
+    body.method ?? "",
+  ).trim();
+
   const description =
-    String(body.description ?? "").trim() || null;
+    String(
+      body.description ?? "",
+    ).trim() || null;
 
   if (!projectid) {
     return NextResponse.json(
-      {
-        error: "Project is required.",
-      },
+      { error: "Project is required." },
       { status: 400 },
     );
   }
 
   if (
-    !["Supplier", "Subcontractor", "In-House"].includes(
-      payeetype,
-    )
+    ![
+      "Supplier",
+      "Subcontractor",
+      "In-House",
+    ].includes(payeetype)
   ) {
     return NextResponse.json(
-      {
-        error: "Invalid payee type.",
-      },
+      { error: "Invalid payee type." },
       { status: 400 },
     );
   }
 
-  if (payeetype !== "In-House" && !payeeid) {
+  if (
+    payeetype !== "In-House" &&
+    !payeeid
+  ) {
     return NextResponse.json(
       {
         error: `${payeetype} is required.`,
@@ -73,16 +132,21 @@ export async function POST(request: Request) {
   if (!category) {
     return NextResponse.json(
       {
-        error: "Expense category is required.",
+        error:
+          "Expense category is required.",
       },
       { status: 400 },
     );
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
     return NextResponse.json(
       {
-        error: "Amount must be greater than zero.",
+        error:
+          "Amount must be greater than zero.",
       },
       { status: 400 },
     );
@@ -91,29 +155,35 @@ export async function POST(request: Request) {
   if (!transactionDate) {
     return NextResponse.json(
       {
-        error: "Request date is required.",
+        error:
+          "Transaction date is required.",
       },
       { status: 400 },
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = currentLagosDate();
 
-  if (transactionDate < today) {
+  if (transactionDate > today) {
     return NextResponse.json(
       {
-        error: "Transaction dates cannot be in the past.",
+        error:
+          "Transaction dates cannot be in the future.",
       },
       { status: 400 },
     );
   }
 
   if (
-    !["Bank Transfer", "Cheque"].includes(paymentMethod)
+    ![
+      "Bank Transfer",
+      "Cheque",
+    ].includes(paymentMethod)
   ) {
     return NextResponse.json(
       {
-        error: "Invalid payment method.",
+        error:
+          "Invalid payment method.",
       },
       { status: 400 },
     );
@@ -121,34 +191,38 @@ export async function POST(request: Request) {
 
   const supabase = createClient();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("status")
-    .eq("projectid", projectid)
-    .single();
+  const { data: project } =
+    await supabase
+      .from("projects")
+      .select("status")
+      .eq("projectid", projectid)
+      .single();
 
   if (!project) {
     return NextResponse.json(
-      {
-        error: "Project not found.",
-      },
+      { error: "Project not found." },
       { status: 404 },
     );
   }
 
-  const isPendingProject = project.status === "Pending";
+  const isPendingProject =
+    project.status === "Pending";
 
-  const { data: categoryRow } = await supabase
-    .from("transactioncategories")
-    .select("categoryid,categoryname,isinhouse,active")
-    .eq("categoryname", category)
-    .eq("active", true)
-    .single();
+  const { data: categoryRow } =
+    await supabase
+      .from("transactioncategories")
+      .select(
+        "categoryid,categoryname,isinhouse,active",
+      )
+      .eq("categoryname", category)
+      .eq("active", true)
+      .single();
 
   if (!categoryRow) {
     return NextResponse.json(
       {
-        error: "The selected expense category is no longer active.",
+        error:
+          "The selected expense category is no longer active.",
       },
       { status: 400 },
     );
@@ -181,60 +255,76 @@ export async function POST(request: Request) {
   }
 
   if (payeetype === "Supplier") {
-    const { data: supplier } = await supabase
-      .from("suppliers")
-      .select("supplierid,status")
-      .eq("supplierid", payeeid)
-      .single();
+    const { data: supplier } =
+      await supabase
+        .from("suppliers")
+        .select("supplierid,status")
+        .eq("supplierid", payeeid)
+        .single();
 
     if (!supplier) {
       return NextResponse.json(
-        {
-          error: "Supplier not found.",
-        },
+        { error: "Supplier not found." },
         { status: 404 },
       );
     }
 
-    if (supplier.status !== "Active") {
+    if (
+      supplier.status !== "Active"
+    ) {
       return NextResponse.json(
         {
-          error: "The selected supplier is inactive.",
+          error:
+            "The selected supplier is inactive.",
         },
         { status: 400 },
       );
     }
   }
 
-  if (payeetype === "Subcontractor") {
-    const { data: subcontractor } = await supabase
-      .from("subcontractors")
-      .select("subcontractorid,status")
-      .eq("subcontractorid", payeeid)
-      .single();
+  if (
+    payeetype === "Subcontractor"
+  ) {
+    const { data: subcontractor } =
+      await supabase
+        .from("subcontractors")
+        .select(
+          "subcontractorid,status",
+        )
+        .eq(
+          "subcontractorid",
+          payeeid,
+        )
+        .single();
 
     if (!subcontractor) {
       return NextResponse.json(
         {
-          error: "Subcontractor not found.",
+          error:
+            "Subcontractor not found.",
         },
         { status: 404 },
       );
     }
 
-    if (subcontractor.status !== "Active") {
+    if (
+      subcontractor.status !==
+      "Active"
+    ) {
       return NextResponse.json(
         {
-          error: "The selected subcontractor is inactive.",
+          error:
+            "The selected subcontractor is inactive.",
         },
         { status: 400 },
       );
     }
   }
 
-  const { data: existing } = await supabase
-    .from("cashoutflowexpenditure")
-    .select("transactionid");
+  const { data: existing } =
+    await supabase
+      .from("cashoutflowexpenditure")
+      .select("transactionid");
 
   const id = nextPrefixedId(
     (existing ?? []).map(
@@ -250,46 +340,83 @@ export async function POST(request: Request) {
       transactionid: id,
       projectid,
       supplierid:
-        payeetype === "Supplier" ? payeeid : null,
+        payeetype === "Supplier"
+          ? payeeid
+          : null,
       subcontractorid:
-        payeetype === "Subcontractor" ? payeeid : null,
-      expenditurecategory: category,
+        payeetype === "Subcontractor"
+          ? payeeid
+          : null,
+      expenditurecategory:
+        category,
       amount,
-      transactiondate: transactionDate,
-      paymentmethod: paymentMethod,
+      transactiondate:
+        transactionDate,
+      paymentmethod:
+        paymentMethod,
       description,
-      makeruserid: viewer.userId,
-      approvalstatus: "Pending",
+      makeruserid:
+        viewer.userId,
+      approvalstatus:
+        "Pending",
     });
 
   if (error) {
     return NextResponse.json(
-      {
-        error: error.message,
-      },
+      { error: error.message },
       { status: 400 },
     );
   }
 
-  await supabase.from("makercheckerauditlog").insert({
-    logid: `LOG${Date.now().toString().slice(-9)}`,
-    transactiontype: "Cash Outflow",
-    transactionid: id,
-    actiontype: "Created",
-    actionbyuserid: viewer.userId,
-    actiondate: today,
-    actiontime: new Date()
-      .toTimeString()
-      .slice(0, 8),
-    comments: isPendingProject
-      ? "Submitted against a project with Pending status. Approval will require an explicit override."
-      : null,
-  });
+  const auditComments: string[] = [];
+
+  if (transactionDate < today) {
+    auditComments.push(
+      `Backdated entry. Transaction date: ${transactionDate}; entered in FinCon on ${today}.`,
+    );
+  }
+
+  if (isPendingProject) {
+    auditComments.push(
+      "Submitted against a project with Pending status. Approval will require an explicit override.",
+    );
+  }
+
+  const { error: auditError } =
+    await supabase
+      .from("makercheckerauditlog")
+      .insert({
+        logid: `LOG${Date.now()
+          .toString()
+          .slice(-9)}`,
+        transactiontype:
+          "Cash Outflow",
+        transactionid: id,
+        actiontype: "Created",
+        actionbyuserid:
+          viewer.userId,
+        actiondate: today,
+        actiontime: new Date()
+          .toTimeString()
+          .slice(0, 8),
+        comments:
+          auditComments.length
+            ? auditComments.join(" ")
+            : null,
+      });
+
+  if (auditError) {
+    console.error(
+      "Cash outflow audit log failed:",
+      auditError,
+    );
+  }
 
   return NextResponse.json(
     {
       transactionid: id,
-      projectPending: isPendingProject,
+      projectPending:
+        isPendingProject,
     },
     { status: 201 },
   );

@@ -3,7 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { requireApiWriteAccess } from "@/lib/viewer";
 import { nextPrefixedId } from "@/lib/client-utils";
 
-const VALID_SOURCES = ["Client", "Department"] as const;
+const VALID_SOURCES = [
+  "Client",
+  "Department",
+] as const;
 
 const VALID_DEPARTMENTS = [
   "MD",
@@ -21,9 +24,35 @@ const VALID_PAYMENT_METHODS = [
   "Cheque",
 ];
 
-export async function POST(request: Request) {
+function currentLagosDate() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-GB",
+      {
+        timeZone: "Africa/Lagos",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      },
+    ).formatToParts(new Date());
+
+  const values = Object.fromEntries(
+    parts.map((part) => [
+      part.type,
+      part.value,
+    ]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export async function POST(
+  request: Request,
+) {
   const { viewer, forbidden } =
-    await requireApiWriteAccess("transactions");
+    await requireApiWriteAccess(
+      "transactions",
+    );
 
   if (forbidden || !viewer) {
     return NextResponse.json(
@@ -35,7 +64,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (viewer.roleName === "Authorizer") {
+  if (
+    viewer.roleName === "Authorizer"
+  ) {
     return NextResponse.json(
       {
         error:
@@ -51,9 +82,7 @@ export async function POST(request: Request) {
     body = await request.json();
   } catch {
     return NextResponse.json(
-      {
-        error: "Invalid request body.",
-      },
+      { error: "Invalid request body." },
       { status: 400 },
     );
   }
@@ -90,7 +119,9 @@ export async function POST(request: Request) {
 
   if (
     !VALID_SOURCES.includes(
-      sourceofcash as (typeof VALID_SOURCES)[number],
+      sourceofcash as (
+        typeof VALID_SOURCES
+      )[number],
     )
   ) {
     return NextResponse.json(
@@ -125,15 +156,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const today = new Date()
-    .toISOString()
-    .slice(0, 10);
+  const today = currentLagosDate();
 
-  if (transactionDate < today) {
+  if (transactionDate > today) {
     return NextResponse.json(
       {
         error:
-          "Transaction dates cannot be in the past.",
+          "Transaction dates cannot be in the future.",
       },
       { status: 400 },
     );
@@ -165,11 +194,6 @@ export async function POST(request: Request) {
 
   const supabase = createClient();
 
-  /*
-   * ----------------------------------------------------------
-   * CLIENT-SOURCED INFLOW
-   * ----------------------------------------------------------
-   */
   if (sourceofcash === "Client") {
     if (!clientid) {
       return NextResponse.json(
@@ -200,17 +224,11 @@ export async function POST(request: Request) {
 
     if (!client) {
       return NextResponse.json(
-        {
-          error: "Client not found.",
-        },
+        { error: "Client not found." },
         { status: 404 },
       );
     }
 
-    /*
-     * The selected project must actually belong
-     * to the selected client.
-     */
     const { data: project } =
       await supabase
         .from("projects")
@@ -222,14 +240,14 @@ export async function POST(request: Request) {
 
     if (!project) {
       return NextResponse.json(
-        {
-          error: "Project not found.",
-        },
+        { error: "Project not found." },
         { status: 404 },
       );
     }
 
-    if (project.clientid !== clientid) {
+    if (
+      project.clientid !== clientid
+    ) {
       return NextResponse.json(
         {
           error:
@@ -239,7 +257,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (project.status === "Pending") {
+    if (
+      project.status === "Pending"
+    ) {
       return NextResponse.json(
         {
           error:
@@ -250,12 +270,9 @@ export async function POST(request: Request) {
     }
   }
 
-  /*
-   * ----------------------------------------------------------
-   * DEPARTMENT-SOURCED INFLOW
-   * ----------------------------------------------------------
-   */
-  if (sourceofcash === "Department") {
+  if (
+    sourceofcash === "Department"
+  ) {
     if (
       !department ||
       !VALID_DEPARTMENTS.includes(
@@ -272,9 +289,6 @@ export async function POST(request: Request) {
     }
   }
 
-  /*
-   * Generate the transaction reference.
-   */
   const { data: existing } =
     await supabase
       .from("cashinflowreceivables")
@@ -292,49 +306,40 @@ export async function POST(request: Request) {
     .from("cashinflowreceivables")
     .insert({
       transactionid: id,
-
       sourceofcash,
-
       clientid:
         sourceofcash === "Client"
           ? clientid
           : null,
-
       projectid:
         sourceofcash === "Client"
           ? projectid
           : null,
-
       department:
         sourceofcash === "Department"
           ? department
           : null,
-
       amount,
-
       transactiondate:
         transactionDate,
-
       paymentmethod:
         paymentMethod,
-
       description,
-
       makeruserid:
         viewer.userId,
-
       approvalstatus:
         "Pending",
     });
 
   if (error) {
     return NextResponse.json(
-      {
-        error: error.message,
-      },
+      { error: error.message },
       { status: 400 },
     );
   }
+
+  const backdated =
+    transactionDate < today;
 
   const { error: auditError } =
     await supabase
@@ -343,22 +348,19 @@ export async function POST(request: Request) {
         logid: `LOG${Date.now()
           .toString()
           .slice(-9)}`,
-
         transactiontype:
           "Cash Inflow",
-
         transactionid: id,
-
         actiontype: "Created",
-
         actionbyuserid:
           viewer.userId,
-
         actiondate: today,
-
         actiontime: new Date()
           .toTimeString()
           .slice(0, 8),
+        comments: backdated
+          ? `Backdated entry. Transaction date: ${transactionDate}; entered in FinCon on ${today}.`
+          : null,
       });
 
   if (auditError) {

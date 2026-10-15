@@ -1,24 +1,62 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Eye, EyeOff } from "lucide-react";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  useRouter,
+} from "next/navigation";
+import {
+  createClient,
+} from "@/lib/supabase/client";
+import {
+  Eye,
+  EyeOff,
+} from "lucide-react";
+
+const LAST_ACTIVITY_KEY =
+  "kcbl:last-activity";
+
+const FORCE_LOGOUT_KEY =
+  "kcbl:force-logout";
 
 export default function LoginForm() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [resetNotice, setResetNotice] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] =
+    useState("");
+  const [error, setError] =
+    useState<string | null>(null);
+  const [loading, setLoading] =
+    useState(false);
+  const [
+    resetNotice,
+    setResetNotice,
+  ] =
+    useState<string | null>(null);
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const loginError = params.get("error");
-    const passwordChanged = params.get("passwordChanged");
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    const loginError =
+      params.get("error");
+
+    const passwordChanged =
+      params.get(
+        "passwordChanged",
+      );
+
+    const reason =
+      params.get("reason");
 
     if (passwordChanged === "1") {
       setResetNotice(
@@ -26,13 +64,26 @@ export default function LoginForm() {
       );
     }
 
+    if (reason === "timeout") {
+      setError(
+        "You were signed out because your session was inactive.",
+      );
+    }
+
     if (!loginError) {
       return;
     }
 
-    if (loginError === "staff-access-expired") {
-      const supabase = createClient();
-      void supabase.auth.signOut({ scope: "local" });
+    if (
+      loginError ===
+      "staff-access-expired"
+    ) {
+      const supabase =
+        createClient();
+
+      void supabase.auth.signOut({
+        scope: "local",
+      });
 
       setError(
         "Your temporary staff access period has expired. Contact an administrator if your engagement has been extended.",
@@ -40,7 +91,10 @@ export default function LoginForm() {
       return;
     }
 
-    if (loginError === "pending-approval") {
+    if (
+      loginError ===
+      "pending-approval"
+    ) {
       setError(
         "Your account is not active yet. Please contact an administrator.",
       );
@@ -54,25 +108,34 @@ export default function LoginForm() {
     }
   }, []);
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(
+    event: React.FormEvent,
+  ) {
     event.preventDefault();
+
     setError(null);
     setResetNotice(null);
     setLoading(true);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
-    await supabase.auth.signOut({ scope: "local" });
+    await supabase.auth.signOut({
+      scope: "local",
+    });
 
     const { error: signInError } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      await supabase.auth.signInWithPassword(
+        {
+          email,
+          password,
+        },
+      );
 
     if (signInError) {
       setError(
-        signInError.message === "Invalid login credentials"
+        signInError.message ===
+          "Invalid login credentials"
           ? "Email or password is incorrect. Check both and try again."
           : signInError.message,
       );
@@ -80,9 +143,19 @@ export default function LoginForm() {
       return;
     }
 
-    // The dashboard server guard checks mustchangepassword.
-    // New users are redirected to /login/change-password before any
-    // dashboard or client-portal content is shown.
+    try {
+      window.localStorage.setItem(
+        LAST_ACTIVITY_KEY,
+        String(Date.now()),
+      );
+
+      window.localStorage.removeItem(
+        FORCE_LOGOUT_KEY,
+      );
+    } catch {
+      // Timeout tracking still works in the active tab if storage is unavailable.
+    }
+
     router.push("/dashboard");
     router.refresh();
   }
@@ -99,17 +172,24 @@ export default function LoginForm() {
 
     setLoading(true);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
     const { error: resetError } =
-      await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login/reset-password`,
-      });
+      await supabase.auth.resetPasswordForEmail(
+        email,
+        {
+          redirectTo:
+            `${window.location.origin}/login/reset-password`,
+        },
+      );
 
     setLoading(false);
 
     if (resetError) {
-      return setError(resetError.message);
+      return setError(
+        resetError.message,
+      );
     }
 
     setResetNotice(
@@ -118,9 +198,15 @@ export default function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+    >
       <div className="mb-4">
-        <label htmlFor="email" className="field-label">
+        <label
+          htmlFor="email"
+          className="field-label"
+        >
           Email address
         </label>
 
@@ -131,7 +217,11 @@ export default function LoginForm() {
             autoComplete="email"
             required
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) =>
+              setEmail(
+                event.target.value,
+              )
+            }
             className="field-input"
             placeholder="you@kcbl.com"
           />
@@ -139,29 +229,53 @@ export default function LoginForm() {
       </div>
 
       <div className="mb-6">
-        <label htmlFor="password" className="field-label">
+        <label
+          htmlFor="password"
+          className="field-label"
+        >
           Password
         </label>
 
         <div className="relative">
           <input
             id="password"
-            type={showPassword ? "text" : "password"}
+            type={
+              showPassword
+                ? "text"
+                : "password"
+            }
             autoComplete="current-password"
             required
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) =>
+              setPassword(
+                event.target.value,
+              )
+            }
             className="field-input pr-11"
             placeholder="••••••••"
           />
 
           <button
             type="button"
-            onClick={() => setShowPassword((current) => !current)}
+            onClick={() =>
+              setShowPassword(
+                (current) =>
+                  !current,
+              )
+            }
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-2 text-slate-500 hover:bg-slate-100"
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={
+              showPassword
+                ? "Hide password"
+                : "Show password"
+            }
           >
-            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            {showPassword ? (
+              <EyeOff size={18} />
+            ) : (
+              <Eye size={18} />
+            )}
           </button>
         </div>
       </div>
@@ -198,7 +312,9 @@ export default function LoginForm() {
         disabled={loading}
         className="btn-primary w-full"
       >
-        {loading ? "Signing in…" : "Sign in"}
+        {loading
+          ? "Signing in…"
+          : "Sign in"}
       </button>
     </form>
   );

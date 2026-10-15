@@ -1,4 +1,8 @@
-import { BriefcaseBusiness, HardHat, Truck } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  HardHat,
+  Truck,
+} from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requirePageAccess } from "@/lib/viewer";
@@ -6,7 +10,9 @@ import PartnerForm from "./partner-form";
 import PartnerDirectory from "./partner-directory";
 import { canAccess } from "@/lib/access";
 
-type PartnerType = "supplier" | "subcontractor";
+type PartnerType =
+  | "supplier"
+  | "subcontractor";
 
 type PartnersPageProps = {
   searchParams?: {
@@ -14,64 +20,122 @@ type PartnersPageProps = {
   };
 };
 
+function normalizeCategories(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  const single = String(value ?? "").trim();
+
+  return single ? [single] : [];
+}
+
 export default async function PartnersPage({
   searchParams,
 }: PartnersPageProps) {
-  const viewer = await requirePageAccess("suppliers");
+  const viewer =
+    await requirePageAccess("suppliers");
 
-  const s = createClient();
+  const supabase = createClient();
 
-  const [{ data: suppliers }, { data: subcontractors }] = await Promise.all([
-    s
+  const [
+    { data: suppliers },
+    { data: subcontractors },
+  ] = await Promise.all([
+    supabase
       .from("suppliers")
       .select(
         "supplierid,suppliername,supplycategory,phonenumber,email,address,description,status",
       )
-      .order("supplierid", { ascending: false }),
+      .order("supplierid", {
+        ascending: false,
+      }),
 
-    s
+    supabase
       .from("subcontractors")
       .select(
         "subcontractorid,subcontractorname,tradespecialty,phonenumber,email,address,description,status",
       )
-      .order("subcontractorid", { ascending: false }),
+      .order("subcontractorid", {
+        ascending: false,
+      }),
   ]);
 
   const rows = [
-    ...(suppliers ?? []).map((x) => ({
-      ...x,
-      id: x.supplierid,
-      name: x.suppliername,
-      category: x.supplycategory,
-      kind: "Supplier" as const,
-    })),
+    ...(suppliers ?? []).map((supplier) => {
+      const categories =
+        normalizeCategories(
+          supplier.supplycategory,
+        );
 
-    ...(subcontractors ?? []).map((x) => ({
-      ...x,
-      id: x.subcontractorid,
-      name: x.subcontractorname,
-      category: x.tradespecialty,
-      kind: "Subcontractor" as const,
-    })),
-  ].sort((a, b) => b.id.localeCompare(a.id));
+      return {
+        ...supplier,
+        supplycategory: categories,
+        id: supplier.supplierid,
+        name: supplier.suppliername,
+        category: categories,
+        kind: "Supplier" as const,
+      };
+    }),
+
+    ...(subcontractors ?? []).map(
+      (subcontractor) => {
+        const categories =
+          normalizeCategories(
+            subcontractor.tradespecialty,
+          );
+
+        return {
+          ...subcontractor,
+          tradespecialty: categories,
+          id: subcontractor.subcontractorid,
+          name:
+            subcontractor.subcontractorname,
+          category: categories,
+          kind: "Subcontractor" as const,
+        };
+      },
+    ),
+  ].sort((left, right) =>
+    right.id.localeCompare(left.id),
+  );
 
   const selectedType: PartnerType =
     searchParams?.type === "subcontractor"
       ? "subcontractor"
       : "supplier";
 
-  const canCreateSupplier = canAccess(viewer, "suppliers", true);
-  const canCreateSubcontractor = canAccess(viewer, "subcontractors", true);
+  const canCreateSupplier = canAccess(
+    viewer,
+    "suppliers",
+    true,
+  );
+
+  const canCreateSubcontractor = canAccess(
+    viewer,
+    "subcontractors",
+    true,
+  );
 
   const canCreate =
     selectedType === "supplier"
       ? canCreateSupplier
       : canCreateSubcontractor;
 
+  const canDelete =
+    viewer.roleName === "Super User";
+
   const selectedExistingIds =
     selectedType === "supplier"
-      ? suppliers?.map((x) => x.supplierid) ?? []
-      : subcontractors?.map((x) => x.subcontractorid) ?? [];
+      ? suppliers?.map(
+          (supplier) => supplier.supplierid,
+        ) ?? []
+      : subcontractors?.map(
+          (subcontractor) =>
+            subcontractor.subcontractorid,
+        ) ?? [];
 
   return (
     <div>
@@ -82,7 +146,7 @@ export default async function PartnersPage({
 
         <div>
           <h1 className="text-xl font-semibold">
-            Suppliers & subcontractors
+            Suppliers &amp; subcontractors
           </h1>
 
           <p className="text-sm text-slate-500">
@@ -91,7 +155,6 @@ export default async function PartnersPage({
         </div>
       </header>
 
-      {/* Supplier / Subcontractor toggle */}
       <div className="mt-6 flex">
         <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1">
           <Link
@@ -122,15 +185,18 @@ export default async function PartnersPage({
 
       <div
         className={`mt-8 grid gap-6 ${
-          canCreate ? "xl:grid-cols-[400px_1fr]" : ""
+          canCreate
+            ? "xl:grid-cols-[400px_1fr]"
+            : ""
         }`}
       >
-        {/* Only the selected partner form is displayed */}
         {canCreate && (
           <div className="card p-6">
             <PartnerForm
               kind={selectedType}
-              existingIds={selectedExistingIds}
+              existingIds={
+                selectedExistingIds
+              }
             />
           </div>
         )}
@@ -142,6 +208,7 @@ export default async function PartnersPage({
               ? "Supplier"
               : "Subcontractor"
           }
+          canDelete={canDelete}
         />
       </div>
     </div>

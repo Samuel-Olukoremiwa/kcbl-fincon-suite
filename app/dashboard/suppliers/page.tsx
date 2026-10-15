@@ -3,18 +3,35 @@ import { createClient } from "@/lib/supabase/server";
 import { requirePageAccess } from "@/lib/viewer";
 import PartnerForm from "../partners/partner-form";
 import EditPartnerRequest from "../partners/edit-partner-request";
+import DeletePartnerButton from "../partners/delete-partner-button";
+
+function normalizeCategories(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item));
+  }
+
+  const single = String(value ?? "").trim();
+
+  return single ? [single] : [];
+}
 
 export default async function SuppliersPage() {
-  await requirePageAccess("suppliers");
+  const viewer =
+    await requirePageAccess("suppliers");
 
-  const s = createClient();
+  const supabase = createClient();
 
-  const { data: rows } = await s
+  const { data: rows } = await supabase
     .from("suppliers")
     .select(
       "supplierid,suppliername,supplycategory,phonenumber,email,address,description,status",
     )
-    .order("supplierid", { ascending: false });
+    .order("supplierid", {
+      ascending: false,
+    });
+
+  const canDelete =
+    viewer.roleName === "Super User";
 
   return (
     <div>
@@ -39,7 +56,9 @@ export default async function SuppliersPage() {
           <PartnerForm
             kind="supplier"
             existingIds={
-              rows?.map((x) => x.supplierid)
+              rows?.map(
+                (row) => row.supplierid,
+              )
             }
           />
         </div>
@@ -52,7 +71,7 @@ export default async function SuppliersPage() {
                   Supplier
                 </th>
                 <th className="px-4 py-3">
-                  Category
+                  Categories
                 </th>
                 <th className="px-4 py-3">
                   Contact
@@ -67,58 +86,79 @@ export default async function SuppliersPage() {
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {rows?.map((r) => (
-                <tr key={r.supplierid}>
-                  <td className="px-4 py-3">
-                    <b>{r.suppliername}</b>
+              {rows?.map((row) => {
+                const categories =
+                  normalizeCategories(
+                    row.supplycategory,
+                  );
 
-                    <span className="block text-xs text-slate-400">
-                      {r.supplierid}
-                    </span>
-                  </td>
+                return (
+                  <tr key={row.supplierid}>
+                    <td className="px-4 py-3">
+                      <b>{row.suppliername}</b>
 
-                  <td className="px-4 py-3">
-                    {r.supplycategory}
-                  </td>
+                      <span className="block text-xs text-slate-400">
+                        {row.supplierid}
+                      </span>
+                    </td>
 
-                  <td className="px-4 py-3">
-                    {r.phonenumber}
+                    <td className="px-4 py-3">
+                      {categories.join(", ") || "—"}
+                    </td>
 
-                    <span className="block text-xs">
-                      {r.email}
-                    </span>
-                  </td>
+                    <td className="px-4 py-3">
+                      {row.phonenumber}
 
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        r.status === "Active"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {r.status}
-                    </span>
-                  </td>
+                      <span className="block text-xs">
+                        {row.email}
+                      </span>
+                    </td>
 
-                  <td className="px-4 py-3">
-                    <EditPartnerRequest
-                      kind="supplier"
-                      entityid={r.supplierid}
-                      partner={{
-                        phonenumber:
-                          r.phonenumber,
-                        email: r.email,
-                        address: r.address,
-                        supplycategory:
-                          r.supplycategory,
-                        description:
-                          r.description,
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          row.status === "Active"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <EditPartnerRequest
+                          kind="supplier"
+                          entityid={row.supplierid}
+                          partner={{
+                            phonenumber:
+                              row.phonenumber,
+                            email: row.email,
+                            address: row.address,
+                            supplycategory:
+                              categories,
+                            description:
+                              row.description,
+                          }}
+                        />
+
+                        {canDelete && (
+                          <DeletePartnerButton
+                            kind="supplier"
+                            entityId={
+                              row.supplierid
+                            }
+                            name={
+                              row.suppliername
+                            }
+                          />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
               {!rows?.length && (
                 <tr>

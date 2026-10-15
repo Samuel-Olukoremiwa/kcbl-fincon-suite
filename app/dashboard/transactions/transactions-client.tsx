@@ -28,10 +28,20 @@ const DEPARTMENTS = [
   "Audit/Internal Control",
 ];
 
-const today = () =>
-  new Date()
+const today = () => {
+  const now = new Date();
+
+  const local = new Date(
+    now.getTime() -
+      now.getTimezoneOffset() *
+        60 *
+        1000,
+  );
+
+  return local
     .toISOString()
     .slice(0, 10);
+};
 
 function statusBadgeClass(
   status: string,
@@ -134,13 +144,10 @@ export default function TransactionsClient({
 
         <Tab
           active={
-            tab ===
-            "approvals"
+            tab === "approvals"
           }
           onClick={() =>
-            setTab(
-              "approvals",
-            )
+            setTab("approvals")
           }
         >
           Approval queue
@@ -269,9 +276,6 @@ function Inflow({
       viewer.roleName ===
         "Initiator");
 
-  /*
-   * Only show projects belonging to the selected client.
-   */
   const clientProjects =
     useMemo(() => {
       if (
@@ -302,11 +306,6 @@ function Inflow({
       nextSource,
     );
 
-    /*
-     * Clear fields belonging to the previous source.
-     * This prevents stale client/project/department
-     * values from being submitted.
-     */
     if (
       nextSource ===
       "Client"
@@ -333,12 +332,6 @@ function Inflow({
       clientId,
     );
 
-    /*
-     * A project belongs to a specific client.
-     * Whenever the client changes, clear the project
-     * so a project from the previous client cannot
-     * remain selected.
-     */
     setSelectedProject(
       "",
     );
@@ -386,9 +379,6 @@ function Inflow({
           )
         : "";
 
-    /*
-     * Client source requires both a client and a project.
-     */
     if (
       source ===
         "Client" &&
@@ -406,9 +396,6 @@ function Inflow({
       return;
     }
 
-    /*
-     * Department source requires a department.
-     */
     if (
       source ===
         "Department" &&
@@ -425,9 +412,6 @@ function Inflow({
       return;
     }
 
-    /*
-     * Description is mandatory.
-     */
     if (
       !get(
         "description",
@@ -637,8 +621,7 @@ function Inflow({
                     required
                   >
                     <option value="">
-                      Select
-                      client…
+                      Select client…
                     </option>
 
                     {clients.map(
@@ -757,8 +740,7 @@ function Inflow({
                   required
                 >
                   <option value="">
-                    Select
-                    department…
+                    Select department…
                   </option>
 
                   {DEPARTMENTS.map(
@@ -796,7 +778,8 @@ function Inflow({
               label="Transaction date"
               name="date"
               type="date"
-              min={today()}
+              max={today()}
+              defaultValue={today()}
               required
             />
 
@@ -1232,10 +1215,11 @@ function ExpenseRequest({
             />
 
             <Field
-              label="Request date"
+              label="Transaction date"
               name="date"
               type="date"
-              min={today()}
+              max={today()}
+              defaultValue={today()}
               required
             />
 
@@ -1426,7 +1410,7 @@ function TransactionsTable({
               </th>
 
               <th className="px-4 py-3">
-                Request date
+                Transaction date
               </th>
 
               <th className="px-4 py-3">
