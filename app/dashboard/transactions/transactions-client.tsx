@@ -1632,8 +1632,22 @@ function Error({
 }: {
   message: string;
 }) {
+  const isSuccess =
+    message
+      .toLowerCase()
+      .includes("submitted") ||
+    message
+      .toLowerCase()
+      .includes("success");
+
   return (
-    <p className="mt-3 text-sm text-red-600">
+    <p
+      className={`mt-3 text-sm ${
+        isSuccess
+          ? "text-emerald-600"
+          : "text-red-600"
+      }`}
+    >
       {message}
     </p>
   );
