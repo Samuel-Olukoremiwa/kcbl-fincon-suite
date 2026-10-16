@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  createClient,
+} from "@/lib/supabase/client";
 
 const LAST_ACTIVITY_KEY =
   "kcbl:last-activity";
@@ -9,36 +14,129 @@ const LAST_ACTIVITY_KEY =
 const FORCE_LOGOUT_KEY =
   "kcbl:force-logout";
 
+const TAB_SESSION_KEY =
+  "kcbl:tab-session";
+
+const SESSION_CHANNEL =
+  "kcbl:session-channel";
+
+type SessionMessage =
+  | {
+      type: "probe";
+    }
+  | {
+      type: "active";
+    }
+  | {
+      type: "logout";
+      reason:
+        | "timeout"
+        | "session-ended";
+    };
+
 export default function SessionTimeout({
   minutes = 5,
+  children,
 }: {
   minutes?: number;
+  children:
+    React.ReactNode;
 }) {
+  const [
+    ready,
+    setReady,
+  ] =
+    useState(false);
+
   useEffect(() => {
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
-    let activeMinutes = Math.max(
-      1,
-      minutes,
-    );
+    let activeMinutes =
+      Math.max(
+        1,
+        minutes,
+      );
 
-    let signingOut = false;
+    let signingOut =
+      false;
+
+    let trackingStarted =
+      false;
+
+    let validated =
+      false;
+
+    let disposed =
+      false;
 
     let memoryLastActivity =
       Date.now();
 
-    let lastActivityWrite = 0;
+    let lastActivityWrite =
+      0;
+
+    let interval:
+      number |
+      undefined;
+
+    let probeTimer:
+      number |
+      undefined;
+
+    let channel:
+      BroadcastChannel |
+      null =
+        null;
+
+    function hasTabSession() {
+      try {
+        return (
+          window.sessionStorage.getItem(
+            TAB_SESSION_KEY,
+          ) ===
+          "active"
+        );
+      } catch {
+        return false;
+      }
+    }
+
+    function markTabSession() {
+      try {
+        window.sessionStorage.setItem(
+          TAB_SESSION_KEY,
+          "active",
+        );
+      } catch {
+        // Ignore storage failures.
+      }
+    }
+
+    function clearTabSession() {
+      try {
+        window.sessionStorage.removeItem(
+          TAB_SESSION_KEY,
+        );
+      } catch {
+        // Ignore storage failures.
+      }
+    }
 
     function readStoredActivity() {
       try {
-        const value = Number(
-          window.localStorage.getItem(
-            LAST_ACTIVITY_KEY,
-          ),
-        );
+        const value =
+          Number(
+            window.localStorage.getItem(
+              LAST_ACTIVITY_KEY,
+            ),
+          );
 
-        return Number.isFinite(value) &&
-          value > 0
+        return Number.isFinite(
+          value,
+        ) &&
+          value >
+            0
           ? value
           : null;
       } catch {
@@ -49,15 +147,28 @@ export default function SessionTimeout({
     function writeActivity(
       value: number,
     ) {
-      memoryLastActivity = value;
+      memoryLastActivity =
+        value;
 
       try {
         window.localStorage.setItem(
           LAST_ACTIVITY_KEY,
-          String(value),
+          String(
+            value,
+          ),
         );
       } catch {
-        // Continue with in-memory tracking if storage is unavailable.
+        // Continue with in-memory tracking.
+      }
+    }
+
+    function clearActivity() {
+      try {
+        window.localStorage.removeItem(
+          LAST_ACTIVITY_KEY,
+        );
+      } catch {
+        // Ignore storage failures.
       }
     }
 
@@ -82,47 +193,64 @@ export default function SessionTimeout({
     }
 
     async function signOut(
+      reason:
+        | "timeout"
+        | "session-ended",
       broadcast = true,
     ) {
-      if (signingOut) {
+      if (
+        signingOut
+      ) {
         return;
       }
 
-      signingOut = true;
+      signingOut =
+        true;
 
-      try {
-        if (broadcast) {
-          try {
-            window.localStorage.setItem(
-              FORCE_LOGOUT_KEY,
-              String(Date.now()),
-            );
-          } catch {
-            // Ignore storage failures.
-          }
-        }
+      clearTabSession();
+      clearActivity();
 
+      if (
+        broadcast
+      ) {
         try {
-          window.localStorage.removeItem(
-            LAST_ACTIVITY_KEY,
+          window.localStorage.setItem(
+            FORCE_LOGOUT_KEY,
+            String(
+              Date.now(),
+            ),
           );
         } catch {
           // Ignore storage failures.
         }
 
+        channel?.postMessage({
+          type:
+            "logout",
+          reason,
+        } satisfies SessionMessage);
+      }
+
+      try {
         await supabase.auth.signOut({
-          scope: "local",
+          scope:
+            "local",
         });
       } finally {
         window.location.replace(
-          "/login?reason=timeout",
+          `/login?reason=${reason}`,
         );
       }
     }
 
     function checkExpiry() {
-      if (isExpired()) {
-        void signOut();
+      if (
+        isExpired()
+      ) {
+        void signOut(
+          "timeout",
+        );
+
         return true;
       }
 
@@ -130,36 +258,85 @@ export default function SessionTimeout({
     }
 
     function recordActivity() {
-      if (checkExpiry()) {
+      if (
+        !validated ||
+        checkExpiry()
+      ) {
         return;
       }
 
-      const now = Date.now();
+      const now =
+        Date.now();
 
       if (
-        now - lastActivityWrite <
+        now -
+          lastActivityWrite <
         1000
       ) {
         return;
       }
 
-      lastActivityWrite = now;
-      writeActivity(now);
+      lastActivityWrite =
+        now;
+
+      writeActivity(
+        now,
+      );
     }
 
-    const existingActivity =
-      readStoredActivity();
+    const handleVisibility =
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          checkExpiry();
+        }
+      };
 
-    if (existingActivity) {
-      memoryLastActivity =
-        existingActivity;
+    const handleFocus =
+      () => {
+        checkExpiry();
+      };
 
-      if (checkExpiry()) {
-        return;
-      }
-    } else {
-      writeActivity(Date.now());
-    }
+    const handleStorage =
+      (
+        event:
+          StorageEvent,
+      ) => {
+        if (
+          event.key ===
+            FORCE_LOGOUT_KEY &&
+          event.newValue
+        ) {
+          void signOut(
+            "session-ended",
+            false,
+          );
+
+          return;
+        }
+
+        if (
+          event.key ===
+            LAST_ACTIVITY_KEY &&
+          event.newValue
+        ) {
+          const value =
+            Number(
+              event.newValue,
+            );
+
+          if (
+            Number.isFinite(
+              value,
+            )
+          ) {
+            memoryLastActivity =
+              value;
+          }
+        }
+      };
 
     const events = [
       "pointerdown",
@@ -173,110 +350,248 @@ export default function SessionTimeout({
       "wheel",
     ];
 
-    events.forEach((event) =>
-      window.addEventListener(
-        event,
-        recordActivity,
-        {
-          passive: true,
-        },
-      ),
-    );
-
-    const handleVisibility = () => {
+    function startTracking() {
       if (
-        document.visibilityState ===
-        "visible"
+        trackingStarted ||
+        disposed
       ) {
-        checkExpiry();
-      }
-    };
-
-    const handleFocus = () => {
-      checkExpiry();
-    };
-
-    const handleStorage = (
-      event: StorageEvent,
-    ) => {
-      if (
-        event.key ===
-          FORCE_LOGOUT_KEY &&
-        event.newValue
-      ) {
-        void signOut(false);
         return;
       }
 
+      trackingStarted =
+        true;
+
+      validated =
+        true;
+
+      markTabSession();
+
+      const storedActivity =
+        readStoredActivity();
+
       if (
-        event.key ===
-          LAST_ACTIVITY_KEY &&
-        event.newValue
+        storedActivity
       ) {
-        const value = Number(
-          event.newValue,
+        memoryLastActivity =
+          storedActivity;
+      } else {
+        writeActivity(
+          Date.now(),
         );
-
-        if (Number.isFinite(value)) {
-          memoryLastActivity = value;
-        }
       }
-    };
 
-    document.addEventListener(
-      "visibilitychange",
-      handleVisibility,
-    );
+      if (
+        checkExpiry()
+      ) {
+        return;
+      }
 
-    window.addEventListener(
-      "focus",
-      handleFocus,
-    );
-
-    window.addEventListener(
-      "storage",
-      handleStorage,
-    );
-
-    const interval =
-      window.setInterval(
-        () => {
-          checkExpiry();
-        },
-        5000,
+      setReady(
+        true,
       );
 
-    fetch("/api/session-timeout")
-      .then((response) =>
-        response.ok
-          ? response.json()
-          : null,
-      )
-      .then((data) => {
-        const configured = Number(
-          data?.minutes,
+      events.forEach(
+        (
+          event,
+        ) =>
+          window.addEventListener(
+            event,
+            recordActivity,
+            {
+              passive:
+                true,
+            },
+          ),
+      );
+
+      document.addEventListener(
+        "visibilitychange",
+        handleVisibility,
+      );
+
+      window.addEventListener(
+        "focus",
+        handleFocus,
+      );
+
+      window.addEventListener(
+        "storage",
+        handleStorage,
+      );
+
+      interval =
+        window.setInterval(
+          () => {
+            checkExpiry();
+          },
+          5000,
         );
 
-        if (
-          Number.isFinite(configured) &&
-          configured >= 1
-        ) {
-          activeMinutes =
-            configured;
+      fetch(
+        "/api/session-timeout",
+      )
+        .then(
+          (
+            response,
+          ) =>
+            response.ok
+              ? response.json()
+              : null,
+        )
+        .then(
+          (
+            data,
+          ) => {
+            const configured =
+              Number(
+                data?.minutes,
+              );
 
-          checkExpiry();
-        }
-      })
-      .catch(() => undefined);
+            if (
+              Number.isFinite(
+                configured,
+              ) &&
+              configured >=
+                1
+            ) {
+              activeMinutes =
+                configured;
+
+              checkExpiry();
+            }
+          },
+        )
+        .catch(
+          () =>
+            undefined,
+        );
+    }
+
+    if (
+      "BroadcastChannel" in
+      window
+    ) {
+      channel =
+        new BroadcastChannel(
+          SESSION_CHANNEL,
+        );
+
+      channel.onmessage =
+        (
+          event:
+            MessageEvent<SessionMessage>,
+        ) => {
+          const message =
+            event.data;
+
+          if (
+            message?.type ===
+            "probe"
+          ) {
+            if (
+              hasTabSession() &&
+              !isExpired()
+            ) {
+              channel?.postMessage({
+                type:
+                  "active",
+              } satisfies SessionMessage);
+            }
+
+            return;
+          }
+
+          if (
+            message?.type ===
+            "active" &&
+            !validated
+          ) {
+            if (
+              probeTimer
+            ) {
+              window.clearTimeout(
+                probeTimer,
+              );
+            }
+
+            startTracking();
+
+            return;
+          }
+
+          if (
+            message?.type ===
+            "logout"
+          ) {
+            void signOut(
+              message.reason,
+              false,
+            );
+          }
+        };
+    }
+
+    if (
+      hasTabSession()
+    ) {
+      startTracking();
+    } else if (
+      channel
+    ) {
+      channel.postMessage({
+        type:
+          "probe",
+      } satisfies SessionMessage);
+
+      probeTimer =
+        window.setTimeout(
+          () => {
+            if (
+              !validated
+            ) {
+              void signOut(
+                "session-ended",
+                false,
+              );
+            }
+          },
+          750,
+        );
+    } else {
+      void signOut(
+        "session-ended",
+        false,
+      );
+    }
 
     return () => {
-      window.clearInterval(interval);
+      disposed =
+        true;
 
-      events.forEach((event) =>
-        window.removeEventListener(
+      if (
+        probeTimer
+      ) {
+        window.clearTimeout(
+          probeTimer,
+        );
+      }
+
+      if (
+        interval
+      ) {
+        window.clearInterval(
+          interval,
+        );
+      }
+
+      events.forEach(
+        (
           event,
-          recordActivity,
-        ),
+        ) =>
+          window.removeEventListener(
+            event,
+            recordActivity,
+          ),
       );
 
       document.removeEventListener(
@@ -293,8 +608,22 @@ export default function SessionTimeout({
         "storage",
         handleStorage,
       );
+
+      channel?.close();
     };
   }, [minutes]);
 
-  return null;
+  if (
+    !ready
+  ) {
+    return null;
+  }
+
+  return (
+    <>
+      {
+        children
+      }
+    </>
+  );
 }

@@ -1,8 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import {
+  useRouter,
+} from "next/navigation";
+import {
+  LogOut,
+} from "lucide-react";
+import {
+  createClient,
+} from "@/lib/supabase/client";
 
 const LAST_ACTIVITY_KEY =
   "kcbl:last-activity";
@@ -10,19 +16,31 @@ const LAST_ACTIVITY_KEY =
 const FORCE_LOGOUT_KEY =
   "kcbl:force-logout";
 
+const TAB_SESSION_KEY =
+  "kcbl:tab-session";
+
 export default function SignOutButton() {
-  const router = useRouter();
-  const supabase = createClient();
+  const router =
+    useRouter();
+
+  const supabase =
+    createClient();
 
   async function handleSignOut() {
     try {
+      window.sessionStorage.removeItem(
+        TAB_SESSION_KEY,
+      );
+
       window.localStorage.removeItem(
         LAST_ACTIVITY_KEY,
       );
 
       window.localStorage.setItem(
         FORCE_LOGOUT_KEY,
-        String(Date.now()),
+        String(
+          Date.now(),
+        ),
       );
     } catch {
       // Ignore storage failures.
@@ -30,20 +48,30 @@ export default function SignOutButton() {
 
     await supabase.auth.signOut();
 
-    router.push("/login");
+    router.push(
+      "/login",
+    );
+
     router.refresh();
   }
 
   return (
     <button
       type="button"
-      onClick={handleSignOut}
+      onClick={
+        handleSignOut
+      }
       className="flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-navy"
     >
       <LogOut
-        size={16}
-        strokeWidth={1.75}
+        size={
+          16
+        }
+        strokeWidth={
+          1.75
+        }
       />
+
       Sign out
     </button>
   );

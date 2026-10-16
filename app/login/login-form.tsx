@@ -21,25 +21,52 @@ const LAST_ACTIVITY_KEY =
 const FORCE_LOGOUT_KEY =
   "kcbl:force-logout";
 
-export default function LoginForm() {
-  const router = useRouter();
+const TAB_SESSION_KEY =
+  "kcbl:tab-session";
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] =
+export default function LoginForm() {
+  const router =
+    useRouter();
+
+  const [
+    email,
+    setEmail,
+  ] =
     useState("");
-  const [error, setError] =
-    useState<string | null>(null);
-  const [loading, setLoading] =
+
+  const [
+    password,
+    setPassword,
+  ] =
+    useState("");
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(false);
+
   const [
     resetNotice,
     setResetNotice,
   ] =
-    useState<string | null>(null);
+    useState<
+      string | null
+    >(null);
+
   const [
     showPassword,
     setShowPassword,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   useEffect(() => {
     const params =
@@ -48,7 +75,9 @@ export default function LoginForm() {
       );
 
     const loginError =
-      params.get("error");
+      params.get(
+        "error",
+      );
 
     const passwordChanged =
       params.get(
@@ -56,21 +85,40 @@ export default function LoginForm() {
       );
 
     const reason =
-      params.get("reason");
+      params.get(
+        "reason",
+      );
 
-    if (passwordChanged === "1") {
+    if (
+      passwordChanged ===
+      "1"
+    ) {
       setResetNotice(
         "Your password has been updated. Sign in with your new password.",
       );
     }
 
-    if (reason === "timeout") {
+    if (
+      reason ===
+      "timeout"
+    ) {
       setError(
         "You were signed out because your session was inactive.",
       );
     }
 
-    if (!loginError) {
+    if (
+      reason ===
+      "session-ended"
+    ) {
+      setError(
+        "Your previous KCBL browser session ended. Sign in again to continue.",
+      );
+    }
+
+    if (
+      !loginError
+    ) {
       return;
     }
 
@@ -82,12 +130,14 @@ export default function LoginForm() {
         createClient();
 
       void supabase.auth.signOut({
-        scope: "local",
+        scope:
+          "local",
       });
 
       setError(
         "Your temporary staff access period has expired. Contact an administrator if your engagement has been extended.",
       );
+
       return;
     }
 
@@ -98,10 +148,14 @@ export default function LoginForm() {
       setError(
         "Your account is not active yet. Please contact an administrator.",
       );
+
       return;
     }
 
-    if (loginError === "profile") {
+    if (
+      loginError ===
+      "profile"
+    ) {
       setError(
         "Your user profile could not be loaded. Please contact an administrator.",
       );
@@ -109,22 +163,35 @@ export default function LoginForm() {
   }, []);
 
   async function handleSubmit(
-    event: React.FormEvent,
+    event:
+      React.FormEvent,
   ) {
     event.preventDefault();
 
-    setError(null);
-    setResetNotice(null);
-    setLoading(true);
+    setError(
+      null,
+    );
+
+    setResetNotice(
+      null,
+    );
+
+    setLoading(
+      true,
+    );
 
     const supabase =
       createClient();
 
     await supabase.auth.signOut({
-      scope: "local",
+      scope:
+        "local",
     });
 
-    const { error: signInError } =
+    const {
+      error:
+        signInError,
+    } =
       await supabase.auth.signInWithPassword(
         {
           email,
@@ -132,50 +199,78 @@ export default function LoginForm() {
         },
       );
 
-    if (signInError) {
+    if (
+      signInError
+    ) {
       setError(
         signInError.message ===
           "Invalid login credentials"
           ? "Email or password is incorrect. Check both and try again."
           : signInError.message,
       );
-      setLoading(false);
+
+      setLoading(
+        false,
+      );
+
       return;
     }
 
     try {
+      window.sessionStorage.setItem(
+        TAB_SESSION_KEY,
+        "active",
+      );
+
       window.localStorage.setItem(
         LAST_ACTIVITY_KEY,
-        String(Date.now()),
+        String(
+          Date.now(),
+        ),
       );
 
       window.localStorage.removeItem(
         FORCE_LOGOUT_KEY,
       );
     } catch {
-      // Timeout tracking still works in the active tab if storage is unavailable.
+      // The session guard applies a strict fallback if storage is unavailable.
     }
 
-    router.push("/dashboard");
+    router.push(
+      "/dashboard",
+    );
+
     router.refresh();
   }
 
   async function forgotPassword() {
-    setError(null);
-    setResetNotice(null);
+    setError(
+      null,
+    );
 
-    if (!email) {
+    setResetNotice(
+      null,
+    );
+
+    if (
+      !email
+    ) {
       return setError(
         "Enter your email address first, then select Forgot password.",
       );
     }
 
-    setLoading(true);
+    setLoading(
+      true,
+    );
 
     const supabase =
       createClient();
 
-    const { error: resetError } =
+    const {
+      error:
+        resetError,
+    } =
       await supabase.auth.resetPasswordForEmail(
         email,
         {
@@ -184,9 +279,13 @@ export default function LoginForm() {
         },
       );
 
-    setLoading(false);
+    setLoading(
+      false,
+    );
 
-    if (resetError) {
+    if (
+      resetError
+    ) {
       return setError(
         resetError.message,
       );
@@ -199,7 +298,9 @@ export default function LoginForm() {
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={
+        handleSubmit
+      }
       noValidate
     >
       <div className="mb-4">
@@ -216,10 +317,16 @@ export default function LoginForm() {
             type="email"
             autoComplete="email"
             required
-            value={email}
-            onChange={(event) =>
+            value={
+              email
+            }
+            onChange={(
+              event,
+            ) =>
               setEmail(
-                event.target.value,
+                event
+                  .target
+                  .value,
               )
             }
             className="field-input"
@@ -246,10 +353,16 @@ export default function LoginForm() {
             }
             autoComplete="current-password"
             required
-            value={password}
-            onChange={(event) =>
+            value={
+              password
+            }
+            onChange={(
+              event,
+            ) =>
               setPassword(
-                event.target.value,
+                event
+                  .target
+                  .value,
               )
             }
             className="field-input pr-11"
@@ -260,7 +373,9 @@ export default function LoginForm() {
             type="button"
             onClick={() =>
               setShowPassword(
-                (current) =>
+                (
+                  current,
+                ) =>
                   !current,
               )
             }
@@ -272,9 +387,17 @@ export default function LoginForm() {
             }
           >
             {showPassword ? (
-              <EyeOff size={18} />
+              <EyeOff
+                size={
+                  18
+                }
+              />
             ) : (
-              <Eye size={18} />
+              <Eye
+                size={
+                  18
+                }
+              />
             )}
           </button>
         </div>
@@ -282,8 +405,12 @@ export default function LoginForm() {
 
       <button
         type="button"
-        onClick={forgotPassword}
-        disabled={loading}
+        onClick={
+          forgotPassword
+        }
+        disabled={
+          loading
+        }
         className="mb-5 text-sm font-medium text-navy hover:underline"
       >
         Forgot password?
@@ -294,7 +421,9 @@ export default function LoginForm() {
           role="alert"
           className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700"
         >
-          {error}
+          {
+            error
+          }
         </p>
       )}
 
@@ -303,13 +432,17 @@ export default function LoginForm() {
           role="status"
           className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700"
         >
-          {resetNotice}
+          {
+            resetNotice
+          }
         </p>
       )}
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={
+          loading
+        }
         className="btn-primary w-full"
       >
         {loading
