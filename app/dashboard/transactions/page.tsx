@@ -1,3 +1,4 @@
+
 import { Banknote } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requirePageAccess } from "@/lib/viewer";
@@ -94,25 +95,35 @@ export default async function TransactionsPage() {
       : null,
   }));
 
-  const detailedOutflows = (outflows ?? []).map((row) => ({
-    ...row,
+  const detailedOutflows = (outflows ?? []).map((row) => {
+    const hasSupplier = Boolean(row.supplierid);
+    const hasSubcontractor = Boolean(row.subcontractorid);
+    const isUnassigned = !hasSupplier && !hasSubcontractor;
 
-    projectname:
-      projectNames.get(row.projectid) ?? row.projectid,
+    return {
+      ...row,
 
-    payeetype: row.supplierid
-      ? "Supplier"
-      : row.subcontractorid
-        ? "Subcontractor"
-        : "In-House",
+      projectname:
+        projectNames.get(row.projectid) ?? row.projectid,
 
-    payeename: row.supplierid
-      ? supplierNames.get(row.supplierid) ?? row.supplierid
-      : row.subcontractorid
-        ? subcontractorNames.get(row.subcontractorid) ??
-          row.subcontractorid
-        : "In-House",
-  }));
+      payeetype: hasSupplier
+        ? "Supplier"
+        : hasSubcontractor
+          ? "Subcontractor"
+          : "Unassigned",
+
+      payeename: hasSupplier
+        ? supplierNames.get(row.supplierid) ??
+          row.supplierid
+        : hasSubcontractor
+          ? subcontractorNames.get(
+              row.subcontractorid,
+            ) ?? row.subcontractorid
+          : "Not yet assigned",
+
+      requiresPayeeReconciliation: isUnassigned,
+    };
+  });
 
   return (
     <div>

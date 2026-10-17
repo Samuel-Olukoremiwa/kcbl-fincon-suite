@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,10 +13,12 @@ type Viewer = {
 };
 
 type Item = any;
+type InflowSource = "Client" | "Department";
+type PayeeType = "Supplier" | "Subcontractor" | "In-House";
 
-type InflowSource =
-  | "Client"
-  | "Department";
+const ALLOW_UNASSIGNED_PAYEES =
+  process.env.NEXT_PUBLIC_ALLOW_UNASSIGNED_EXPENSE_PAYEES ===
+  "true";
 
 const DEPARTMENTS = [
   "MD",
@@ -30,63 +33,25 @@ const DEPARTMENTS = [
 
 const today = () => {
   const now = new Date();
-
   const local = new Date(
-    now.getTime() -
-      now.getTimezoneOffset() *
-        60 *
-        1000,
+    now.getTime() - now.getTimezoneOffset() * 60000,
   );
-
-  return local
-    .toISOString()
-    .slice(0, 10);
+  return local.toISOString().slice(0, 10);
 };
 
-function statusBadgeClass(
-  status: string,
-) {
-  const s =
-    (status ?? "")
-      .toLowerCase();
-
-  if (
-    s.includes("approv")
-  ) {
-    return "badge-success";
-  }
-
-  if (
-    s.includes("reject")
-  ) {
-    return "badge-danger";
-  }
-
-  if (
-    s.includes("pending") ||
-    s.includes("awaiting")
-  ) {
+function statusBadgeClass(status: string) {
+  const s = (status ?? "").toLowerCase();
+  if (s.includes("approv")) return "badge-success";
+  if (s.includes("reject")) return "badge-danger";
+  if (s.includes("pending") || s.includes("awaiting"))
     return "badge-warning";
-  }
-
   return "badge-neutral";
 }
 
-function payeeTypeBadgeClass(
-  type: string,
-) {
-  if (
-    type === "Supplier"
-  ) {
-    return "badge-brand";
-  }
-
-  if (
-    type === "Subcontractor"
-  ) {
+function payeeTypeBadgeClass(type: string) {
+  if (type === "Supplier") return "badge-brand";
+  if (type === "Subcontractor")
     return "badge bg-navy-50 text-navy";
-  }
-
   return "badge-neutral";
 }
 
@@ -107,55 +72,36 @@ export default function TransactionsClient({
   inflows: Item[];
   outflows: Item[];
 }) {
-  const [
-    tab,
-    setTab,
-  ] =
-    useState<
-      | "inflow"
-      | "expense"
-      | "approvals"
-    >("inflow");
+  const [tab, setTab] = useState<
+    "inflow" | "expense" | "approvals"
+  >("inflow");
 
   return (
     <div className="mt-8">
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
         <Tab
-          active={
-            tab === "inflow"
-          }
-          onClick={() =>
-            setTab("inflow")
-          }
+          active={tab === "inflow"}
+          onClick={() => setTab("inflow")}
         >
           Cash inflow
         </Tab>
 
         <Tab
-          active={
-            tab === "expense"
-          }
-          onClick={() =>
-            setTab("expense")
-          }
+          active={tab === "expense"}
+          onClick={() => setTab("expense")}
         >
           Expense request
         </Tab>
 
         <Tab
-          active={
-            tab === "approvals"
-          }
-          onClick={() =>
-            setTab("approvals")
-          }
+          active={tab === "approvals"}
+          onClick={() => setTab("approvals")}
         >
           Approval queue
         </Tab>
       </div>
 
-      {tab ===
-        "inflow" && (
+      {tab === "inflow" && (
         <Inflow
           viewer={viewer}
           clients={clients}
@@ -164,21 +110,17 @@ export default function TransactionsClient({
         />
       )}
 
-      {tab ===
-        "expense" && (
+      {tab === "expense" && (
         <ExpenseRequest
           viewer={viewer}
           projects={projects}
           suppliers={suppliers}
-          subcontractors={
-            subcontractors
-          }
+          subcontractors={subcontractors}
           rows={outflows}
         />
       )}
 
-      {tab ===
-        "approvals" && (
+      {tab === "approvals" && (
         <ApprovalQueue
           viewer={viewer}
           inflows={inflows}
@@ -196,8 +138,7 @@ function Tab({
 }: {
   active: boolean;
   onClick: () => void;
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <button
@@ -225,117 +166,43 @@ function Inflow({
   projects: Item[];
   rows: Item[];
 }) {
-  const router =
-    useRouter();
-
-  const [
-    source,
-    setSource,
-  ] =
-    useState<InflowSource>(
-      "Client",
-    );
-
-  const [
-    selectedClient,
-    setSelectedClient,
-  ] =
+  const router = useRouter();
+  const [source, setSource] =
+    useState<InflowSource>("Client");
+  const [selectedClient, setSelectedClient] = useState("");
+  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedDepartment, setSelectedDepartment] =
     useState("");
-
-  const [
-    selectedProject,
-    setSelectedProject,
-  ] =
-    useState("");
-
-  const [
-    selectedDepartment,
-    setSelectedDepartment,
-  ] =
-    useState("");
-
-  const [
-    msg,
-    setMsg,
-  ] =
-    useState<
-      string | null
-    >(null);
-
-  const [
-    saving,
-    setSaving,
-  ] =
-    useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const canCreate =
-    viewer.roleName ===
-      "Super User" ||
-    (viewer.department ===
-      "Finance & Admin" &&
-      viewer.roleName ===
-        "Initiator");
+    viewer.roleName === "Super User" ||
+    (viewer.department === "Finance & Admin" &&
+      viewer.roleName === "Initiator");
 
-  const clientProjects =
-    useMemo(() => {
-      if (
-        !selectedClient
-      ) {
-        return [];
-      }
-
-      return projects.filter(
-        (project) =>
-          String(
-            project.clientid,
-          ) ===
-          String(
-            selectedClient,
-          ),
-      );
-    }, [
-      projects,
-      selectedClient,
-    ]);
-
-  function changeSource(
-    nextSource:
-      InflowSource,
-  ) {
-    setSource(
-      nextSource,
+  const clientProjects = useMemo(() => {
+    if (!selectedClient) return [];
+    return projects.filter(
+      (project) =>
+        String(project.clientid) === String(selectedClient),
     );
+  }, [projects, selectedClient]);
 
-    if (
-      nextSource ===
-      "Client"
-    ) {
-      setSelectedDepartment(
-        "",
-      );
+  function changeSource(nextSource: InflowSource) {
+    setSource(nextSource);
+    if (nextSource === "Client") {
+      setSelectedDepartment("");
     } else {
-      setSelectedClient(
-        "",
-      );
-      setSelectedProject(
-        "",
-      );
+      setSelectedClient("");
+      setSelectedProject("");
     }
-
     setMsg(null);
   }
 
-  function changeClient(
-    clientId: string,
-  ) {
-    setSelectedClient(
-      clientId,
-    );
-
-    setSelectedProject(
-      "",
-    );
-
+  function changeClient(clientId: string) {
+    setSelectedClient(clientId);
+    setSelectedProject("");
     setMsg(null);
   }
 
@@ -343,193 +210,86 @@ function Inflow({
     e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault();
-
-    const form =
-      e.currentTarget;
-
+    const form = e.currentTarget;
     setSaving(true);
     setMsg(null);
 
-    const f =
-      new FormData(
-        form,
-      );
-
-    const get = (
-      name: string,
-    ) =>
-      String(
-        f.get(name) ??
-          "",
-      ).trim();
+    const f = new FormData(form);
+    const get = (name: string) =>
+      String(f.get(name) ?? "").trim();
 
     const projectId =
-      source ===
-      "Client"
-        ? get(
-            "projectid",
-          )
-        : "";
-
+      source === "Client" ? get("projectid") : "";
     const department =
-      source ===
-      "Department"
-        ? get(
-            "department",
-          )
-        : "";
+      source === "Department" ? get("department") : "";
 
     if (
-      source ===
-        "Client" &&
-      (!selectedClient ||
-        !projectId)
+      source === "Client" &&
+      (!selectedClient || !projectId)
     ) {
       setMsg(
         "Select a client and a project before submitting the cash inflow.",
       );
-
-      setSaving(
-        false,
-      );
-
+      setSaving(false);
       return;
     }
 
-    if (
-      source ===
-        "Department" &&
-      !department
-    ) {
+    if (source === "Department" && !department) {
       setMsg(
         "Select a department before submitting the cash inflow.",
       );
-
-      setSaving(
-        false,
-      );
-
+      setSaving(false);
       return;
     }
 
-    if (
-      !get(
-        "description",
-      )
-    ) {
-      setMsg(
-        "Description is required.",
-      );
-
-      setSaving(
-        false,
-      );
-
+    if (!get("description")) {
+      setMsg("Description is required.");
+      setSaving(false);
       return;
     }
 
     try {
-      const response =
-        await fetch(
-          "/api/transactions/inflow",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify(
-                {
-                  sourceofcash:
-                    source,
-
-                  clientid:
-                    source ===
-                    "Client"
-                      ? selectedClient
-                      : null,
-
-                  projectid:
-                    source ===
-                    "Client"
-                      ? projectId
-                      : null,
-
-                  department:
-                    source ===
-                    "Department"
-                      ? department
-                      : null,
-
-                  amount:
-                    get(
-                      "amount",
-                    ),
-
-                  date:
-                    get(
-                      "date",
-                    ),
-
-                  method:
-                    get(
-                      "method",
-                    ),
-
-                  description:
-                    get(
-                      "description",
-                    ),
-                },
-              ),
+      const response = await fetch(
+        "/api/transactions/inflow",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            sourceofcash: source,
+            clientid:
+              source === "Client" ? selectedClient : null,
+            projectid:
+              source === "Client" ? projectId : null,
+            department:
+              source === "Department" ? department : null,
+            amount: get("amount"),
+            date: get("date"),
+            method: get("method"),
+            description: get("description"),
+          }),
+        },
+      );
 
-      const result =
-        await response.json();
+      const result = await response.json();
 
-      if (
-        !response.ok
-      ) {
+      if (!response.ok) {
         setMsg(
-          result.error ||
-            "Unable to submit cash inflow.",
+          result.error || "Unable to submit cash inflow.",
         );
-
         return;
       }
 
       form.reset();
-
-      setSource(
-        "Client",
-      );
-
-      setSelectedClient(
-        "",
-      );
-
-      setSelectedProject(
-        "",
-      );
-
-      setSelectedDepartment(
-        "",
-      );
-
-      setMsg(
-        "Cash inflow submitted for approval.",
-      );
-
+      setSource("Client");
+      setSelectedClient("");
+      setSelectedProject("");
+      setSelectedDepartment("");
+      setMsg("Cash inflow submitted for approval.");
       router.refresh();
     } catch {
-      setMsg(
-        "Unable to connect to the server.",
-      );
+      setMsg("Unable to connect to the server.");
     } finally {
       setSaving(false);
     }
@@ -538,50 +298,34 @@ function Inflow({
   return (
     <section className="mt-6 grid gap-6 xl:grid-cols-[400px_1fr]">
       <div className="card p-6">
-        <p className="section-title">
-          New cash inflow
-        </p>
+        <p className="section-title">New cash inflow</p>
 
         {canCreate ? (
           <form
-            onSubmit={
-              submit
-            }
+            onSubmit={submit}
             className="mt-4 space-y-4"
           >
             <div>
               <label className="field-label">
                 Source of Cash
               </label>
-
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    changeSource(
-                      "Client",
-                    )
-                  }
+                  onClick={() => changeSource("Client")}
                   className={
-                    source ===
-                    "Client"
+                    source === "Client"
                       ? "btn-primary"
                       : "btn-secondary"
                   }
                 >
                   Client
                 </button>
-
                 <button
                   type="button"
-                  onClick={() =>
-                    changeSource(
-                      "Department",
-                    )
-                  }
+                  onClick={() => changeSource("Department")}
                   className={
-                    source ===
-                    "Department"
+                    source === "Department"
                       ? "btn-primary"
                       : "btn-secondary"
                   }
@@ -591,8 +335,7 @@ function Inflow({
               </div>
             </div>
 
-            {source ===
-              "Client" && (
+            {source === "Client" && (
               <>
                 <div>
                   <label
@@ -601,47 +344,27 @@ function Inflow({
                   >
                     Client
                   </label>
-
                   <select
                     id="clientid"
                     name="clientid"
                     className="field-input"
-                    value={
-                      selectedClient
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      changeClient(
-                        event
-                          .target
-                          .value,
-                      )
+                    value={selectedClient}
+                    onChange={(event) =>
+                      changeClient(event.target.value)
                     }
                     required
                   >
                     <option value="">
                       Select client…
                     </option>
-
-                    {clients.map(
-                      (
-                        client,
-                      ) => (
-                        <option
-                          key={
-                            client.clientid
-                          }
-                          value={
-                            client.clientid
-                          }
-                        >
-                          {
-                            client.fullnameorcompanyname
-                          }
-                        </option>
-                      ),
-                    )}
+                    {clients.map((client) => (
+                      <option
+                        key={client.clientid}
+                        value={client.clientid}
+                      >
+                        {client.fullnameorcompanyname}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -652,67 +375,43 @@ function Inflow({
                   >
                     Project
                   </label>
-
                   <select
                     id="projectid"
                     name="projectid"
                     className="field-input"
-                    value={
-                      selectedProject
-                    }
-                    onChange={(
-                      event,
-                    ) =>
-                      setSelectedProject(
-                        event
-                          .target
-                          .value,
-                      )
+                    value={selectedProject}
+                    onChange={(event) =>
+                      setSelectedProject(event.target.value)
                     }
                     required
-                    disabled={
-                      !selectedClient
-                    }
+                    disabled={!selectedClient}
                   >
                     <option value="">
                       {selectedClient
                         ? "Select project…"
                         : "Select a client first…"}
                     </option>
-
-                    {clientProjects.map(
-                      (
-                        project,
-                      ) => (
-                        <option
-                          key={
-                            project.projectid
-                          }
-                          value={
-                            project.projectid
-                          }
-                        >
-                          {
-                            project.projecttitle
-                          }
-                        </option>
-                      ),
-                    )}
+                    {clientProjects.map((project) => (
+                      <option
+                        key={project.projectid}
+                        value={project.projectid}
+                      >
+                        {project.projecttitle}
+                      </option>
+                    ))}
                   </select>
-
                   {selectedClient &&
-                    clientProjects.length ===
-                      0 && (
+                    clientProjects.length === 0 && (
                       <p className="mt-1 text-xs text-slate-500">
-                        No projects are assigned to this client.
+                        No projects are assigned to this
+                        client.
                       </p>
                     )}
                 </div>
               </>
             )}
 
-            {source ===
-              "Department" && (
+            {source === "Department" && (
               <div>
                 <label
                   htmlFor="department"
@@ -720,47 +419,27 @@ function Inflow({
                 >
                   Department
                 </label>
-
                 <select
                   id="department"
                   name="department"
                   className="field-input"
-                  value={
-                    selectedDepartment
-                  }
-                  onChange={(
-                    event,
-                  ) =>
-                    setSelectedDepartment(
-                      event
-                        .target
-                        .value,
-                    )
+                  value={selectedDepartment}
+                  onChange={(event) =>
+                    setSelectedDepartment(event.target.value)
                   }
                   required
                 >
                   <option value="">
                     Select department…
                   </option>
-
-                  {DEPARTMENTS.map(
-                    (
-                      department,
-                    ) => (
-                      <option
-                        key={
-                          department
-                        }
-                        value={
-                          department
-                        }
-                      >
-                        {
-                          department
-                        }
-                      </option>
-                    ),
-                  )}
+                  {DEPARTMENTS.map((department) => (
+                    <option
+                      key={department}
+                      value={department}
+                    >
+                      {department}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -773,7 +452,6 @@ function Inflow({
               step="0.01"
               required
             />
-
             <Field
               label="Transaction date"
               name="date"
@@ -782,23 +460,15 @@ function Inflow({
               defaultValue={today()}
               required
             />
-
             <Select
               label="Payment method"
               name="method"
               values={[
-                [
-                  "Bank Transfer",
-                  "Bank Transfer",
-                ],
-                [
-                  "Cheque",
-                  "Cheque",
-                ],
+                ["Bank Transfer", "Bank Transfer"],
+                ["Cheque", "Cheque"],
               ]}
               required
             />
-
             <Field
               label="Description"
               name="description"
@@ -807,9 +477,7 @@ function Inflow({
 
             <button
               type="submit"
-              disabled={
-                saving
-              }
+              disabled={saving}
               className="btn-primary w-full"
             >
               {saving
@@ -819,27 +487,15 @@ function Inflow({
           </form>
         ) : (
           <Notice>
-            Only an
-            Initiator or
-            Super User can
-            submit cash
+            Only an Initiator or Super User can submit cash
             inflow.
           </Notice>
         )}
 
-        {msg && (
-          <Error
-            message={
-              msg
-            }
-          />
-        )}
+        {msg && <Error message={msg} />}
       </div>
 
-      <TransactionsTable
-        rows={rows}
-        kind="Inflow"
-      />
+      <TransactionsTable rows={rows} kind="Inflow" />
     </section>
   );
 }
@@ -857,292 +513,179 @@ function ExpenseRequest({
   subcontractors: Item[];
   rows: Item[];
 }) {
-  const router =
-    useRouter();
+  const router = useRouter();
 
-  const [
-    payee,
-    setPayee,
-  ] =
-    useState<
-      | "Supplier"
-      | "Subcontractor"
-      | "In-House"
-    >("Supplier");
-
-  const [
-    saving,
-    setSaving,
-  ] =
-    useState(false);
-
-  const [
-    msg,
-    setMsg,
-  ] =
-    useState<
-      string | null
-    >(null);
-
-  const [
-    categories,
-    setCategories,
-  ] =
-    useState<
-      {
-        categoryname:
-          string;
-
-        isinhouse:
-          boolean;
-      }[]
-    >([]);
-
-  const [
-    filterProject,
-    setFilterProject,
-  ] =
-    useState("");
-
-  const [
-    filterPayeeType,
-    setFilterPayeeType,
-  ] =
+  const [payee, setPayee] =
+    useState<PayeeType>("Supplier");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [categories, setCategories] = useState<
+    {
+      categoryname: string;
+      isinhouse: boolean;
+    }[]
+  >([]);
+  const [filterProject, setFilterProject] = useState("");
+  const [filterPayeeType, setFilterPayeeType] =
     useState("");
 
   useEffect(() => {
-    fetch(
-      "/api/transactions/categories",
-    )
-      .then(
-        (response) =>
-          response.json(),
+    fetch("/api/transactions/categories")
+      .then((response) => response.json())
+      .then((result) =>
+        setCategories(result.categories ?? []),
       )
-      .then(
-        (result) =>
-          setCategories(
-            result.categories ??
-              [],
-          ),
-      )
-      .catch(
-        () =>
-          undefined,
-      );
+      .catch(() => undefined);
   }, []);
 
   const canCreate =
-    viewer.roleName ===
-      "Super User" ||
-    (viewer.department ===
-      "Finance & Admin" &&
-      viewer.roleName ===
-        "Initiator");
+    viewer.roleName === "Super User" ||
+    (viewer.department === "Finance & Admin" &&
+      viewer.roleName === "Initiator");
+
+  const payees =
+    payee === "Supplier"
+      ? suppliers.map((x) => [
+          x.supplierid,
+          x.suppliername,
+        ])
+      : payee === "Subcontractor"
+        ? subcontractors.map((x) => [
+            x.subcontractorid,
+            x.subcontractorname,
+          ])
+        : [];
+
+  const categoryValues = categories
+    .filter((category) =>
+      payee === "In-House"
+        ? category.isinhouse
+        : !category.isinhouse,
+    )
+    .map((category) => [
+      category.categoryname,
+      category.categoryname,
+    ]);
+
+  const filteredRows = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          (!filterProject ||
+            row.projectid === filterProject) &&
+          (!filterPayeeType ||
+            row.payeetype === filterPayeeType),
+      ),
+    [rows, filterProject, filterPayeeType],
+  );
 
   async function submit(
     e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault();
 
-    const form =
-      e.currentTarget;
-
+    const form = e.currentTarget;
     setSaving(true);
     setMsg(null);
 
-    const f =
-      new FormData(
-        form,
-      );
+    const f = new FormData(form);
+    const get = (name: string) =>
+      String(f.get(name) ?? "").trim();
 
-    const get = (
-      name: string,
-    ) =>
-      String(
-        f.get(name) ??
-          "",
-      ).trim();
+    const payeeid =
+      payee === "In-House"
+        ? null
+        : get("payeeid") || null;
+
+    if (
+      payee !== "In-House" &&
+      !payeeid &&
+      !ALLOW_UNASSIGNED_PAYEES
+    ) {
+      setMsg(`Please select a ${payee.toLowerCase()}.`);
+      setSaving(false);
+      return;
+    }
 
     try {
-      const response =
-        await fetch(
-          "/api/transactions/outflow",
-          {
-            method:
-              "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify(
-                {
-                  projectid:
-                    get(
-                      "projectid",
-                    ),
-
-                  payeetype:
-                    payee,
-
-                  payeeid:
-                    payee ===
-                    "In-House"
-                      ? null
-                      : get(
-                          "payeeid",
-                        ),
-
-                  category:
-                    get(
-                      "category",
-                    ),
-
-                  amount:
-                    get(
-                      "amount",
-                    ),
-
-                  date:
-                    get(
-                      "date",
-                    ),
-
-                  method:
-                    get(
-                      "method",
-                    ),
-
-                  description:
-                    get(
-                      "description",
-                    ),
-                },
-              ),
+      const response = await fetch(
+        "/api/transactions/outflow",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            projectid: get("projectid"),
+            payeetype: payee,
+            payeeid,
+            category: get("category"),
+            amount: get("amount"),
+            date: get("date"),
+            method: get("method"),
+            description: get("description"),
+          }),
+        },
+      );
 
-      const result =
-        await response.json();
+      const result = await response.json();
 
-      if (
-        !response.ok
-      ) {
+      if (!response.ok) {
         setMsg(
           result.error ||
             "Unable to submit expense request.",
         );
-
         return;
       }
 
       form.reset();
-
-      setPayee(
-        "Supplier",
-      );
-
+      setPayee("Supplier");
       setMsg(
-        "Expense request submitted for authorization. It will not affect cash position until approved.",
+        result.payeeReconciliationRequired
+          ? "Expense submitted for authorization. Supplier/subcontractor reconciliation will be required later."
+          : "Expense request submitted for authorization. It will not affect cash position until approved.",
       );
-
       router.refresh();
     } catch {
-      setMsg(
-        "Unable to connect to the server.",
-      );
+      setMsg("Unable to connect to the server.");
     } finally {
       setSaving(false);
     }
   }
 
-  const payees =
-    payee ===
-    "Supplier"
-      ? suppliers.map(
-          (x) => [
-            x.supplierid,
-            x.suppliername,
-          ],
-        )
-      : payee ===
-          "Subcontractor"
-        ? subcontractors.map(
-            (x) => [
-              x.subcontractorid,
-              x.subcontractorname,
-            ],
-          )
-        : [];
-
-  const categoryValues =
-    categories
-      .filter(
-        (category) =>
-          payee ===
-          "In-House"
-            ? category.isinhouse
-            : !category.isinhouse,
-      )
-      .map(
-        (category) => [
-          category.categoryname,
-          category.categoryname,
-        ],
-      );
-
-  const filteredRows =
-    useMemo(
-      () =>
-        rows.filter(
-          (row) =>
-            (!filterProject ||
-              row.projectid ===
-                filterProject) &&
-            (!filterPayeeType ||
-              row.payeetype ===
-                filterPayeeType),
-        ),
-      [
-        rows,
-        filterProject,
-        filterPayeeType,
-      ],
-    );
-
   return (
     <section className="mt-6 grid gap-6 xl:grid-cols-[400px_1fr]">
       <div className="card p-6">
         <p className="section-title">
-          Expense approval
-          request
+          Expense approval request
         </p>
 
         <p className="mt-1 text-xs text-slate-500">
-          Authorization is
-          required before this
-          becomes an approved
-          cash outflow.
+          Authorization is required before this becomes
+          an approved cash outflow.
         </p>
+
+        {ALLOW_UNASSIGNED_PAYEES && (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <strong>Historical backlog mode enabled.</strong>
+            {" "}Supplier and subcontractor selection is
+            temporarily optional. Unassigned entries must
+            be reconciled later.
+          </div>
+        )}
 
         {canCreate ? (
           <form
-            onSubmit={
-              submit
-            }
+            onSubmit={submit}
             className="mt-4 space-y-4"
           >
             <Select
               label="Project"
               name="projectid"
-              values={projects.map(
-                (p) => [
-                  p.projectid,
-                  p.projecttitle,
-                ],
-              )}
+              values={projects.map((p) => [
+                p.projectid,
+                p.projecttitle,
+              ])}
               required
             />
 
@@ -1158,50 +701,52 @@ function ExpenseRequest({
                     "Subcontractor",
                     "In-House",
                   ] as const
-                ).map(
-                  (type) => (
-                    <button
-                      type="button"
-                      key={type}
-                      onClick={() =>
-                        setPayee(
-                          type,
-                        )
-                      }
-                      className={
-                        payee ===
-                        type
-                          ? "btn-primary"
-                          : "btn-secondary"
-                      }
-                    >
-                      {type}
-                    </button>
-                  ),
-                )}
+                ).map((type) => (
+                  <button
+                    type="button"
+                    key={type}
+                    onClick={() => setPayee(type)}
+                    className={
+                      payee === type
+                        ? "btn-primary"
+                        : "btn-secondary"
+                    }
+                  >
+                    {type}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {payee !==
-              "In-House" && (
-              <Select
-                label={
-                  payee
-                }
-                name="payeeid"
-                values={
-                  payees
-                }
-                required
-              />
+            {payee !== "In-House" && (
+              <div>
+                <Select
+                  key={payee}
+                  label={
+                    ALLOW_UNASSIGNED_PAYEES
+                      ? `${payee} (optional for backlog)`
+                      : payee
+                  }
+                  name="payeeid"
+                  values={payees}
+                  required={!ALLOW_UNASSIGNED_PAYEES}
+                />
+
+                {ALLOW_UNASSIGNED_PAYEES && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Leave blank if the supplier or
+                    subcontractor has not been registered.
+                    The transaction will be marked as
+                    unassigned.
+                  </p>
+                )}
+              </div>
             )}
 
             <Select
               label="Category"
               name="category"
-              values={
-                categoryValues
-              }
+              values={categoryValues}
               required
             />
 
@@ -1227,14 +772,8 @@ function ExpenseRequest({
               label="Payment method"
               name="method"
               values={[
-                [
-                  "Bank Transfer",
-                  "Bank Transfer",
-                ],
-                [
-                  "Cheque",
-                  "Cheque",
-                ],
+                ["Bank Transfer", "Bank Transfer"],
+                ["Cheque", "Cheque"],
               ]}
               required
             />
@@ -1247,9 +786,7 @@ function ExpenseRequest({
 
             <button
               type="submit"
-              disabled={
-                saving
-              }
+              disabled={saving}
               className="btn-primary w-full"
             >
               {saving
@@ -1259,104 +796,56 @@ function ExpenseRequest({
           </form>
         ) : (
           <Notice>
-            Only an Initiator
-            or Super User can
-            submit an expense
-            request.
+            Only an Initiator or Super User can submit
+            an expense request.
           </Notice>
         )}
 
-        {msg && (
-          <Error
-            message={msg}
-          />
-        )}
+        {msg && <Error message={msg} />}
       </div>
 
       <div>
         <div className="card mb-4 flex flex-wrap gap-3 p-4">
           <select
             className="field-input max-w-[220px]"
-            value={
-              filterProject
-            }
-            onChange={(
-              event,
-            ) =>
-              setFilterProject(
-                event
-                  .target
-                  .value,
-              )
+            value={filterProject}
+            onChange={(event) =>
+              setFilterProject(event.target.value)
             }
           >
-            <option value="">
-              All projects
-            </option>
-
-            {projects.map(
-              (project) => (
-                <option
-                  key={
-                    project.projectid
-                  }
-                  value={
-                    project.projectid
-                  }
-                >
-                  {
-                    project.projecttitle
-                  }
-                </option>
-              ),
-            )}
+            <option value="">All projects</option>
+            {projects.map((project) => (
+              <option
+                key={project.projectid}
+                value={project.projectid}
+              >
+                {project.projecttitle}
+              </option>
+            ))}
           </select>
 
           <select
             className="field-input max-w-[200px]"
-            value={
-              filterPayeeType
-            }
-            onChange={(
-              event,
-            ) =>
-              setFilterPayeeType(
-                event
-                  .target
-                  .value,
-              )
+            value={filterPayeeType}
+            onChange={(event) =>
+              setFilterPayeeType(event.target.value)
             }
           >
-            <option value="">
-              All payee types
-            </option>
-
-            <option value="Supplier">
-              Supplier
-            </option>
-
+            <option value="">All payee types</option>
+            <option value="Supplier">Supplier</option>
             <option value="Subcontractor">
               Subcontractor
             </option>
-
-            <option value="In-House">
-              In-House
-            </option>
+            <option value="In-House">In-House</option>
           </select>
 
-          {(filterProject ||
-            filterPayeeType) && (
+          {(filterProject || filterPayeeType) && (
             <button
               type="button"
               className="btn-secondary"
               onClick={() => {
-                setFilterProject(
-                  "",
-                );
-
-                setFilterPayeeType(
-                  "",
-                );
+                setFilterProject("");
+                setFilterPayeeType("");
               }}
             >
               Clear filters
@@ -1365,9 +854,7 @@ function ExpenseRequest({
         </div>
 
         <TransactionsTable
-          rows={
-            filteredRows
-          }
+          rows={filteredRows}
           kind="Expense request"
           showPayee
         />
@@ -1391,153 +878,97 @@ function TransactionsTable({
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">
-                Reference
-              </th>
-
-              <th className="px-4 py-3">
-                Project
-              </th>
-
+              <th className="px-4 py-3">Reference</th>
+              <th className="px-4 py-3">Project</th>
               {showPayee && (
-                <th className="px-4 py-3">
-                  Payee
-                </th>
+                <th className="px-4 py-3">Payee</th>
               )}
-
-              <th className="px-4 py-3">
-                Amount
-              </th>
-
+              <th className="px-4 py-3">Amount</th>
               <th className="px-4 py-3">
                 Transaction date
               </th>
-
-              <th className="px-4 py-3">
-                Status
-              </th>
+              <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {rows.map(
-              (row) => (
-                <tr
-                  key={
-                    row.transactionid
-                  }
-                  className="row-interactive"
-                >
-                  <td className="px-4 py-3">
-                    <b>
-                      {
-                        row.transactionid
-                      }
-                    </b>
+            {rows.map((row) => (
+              <tr
+                key={row.transactionid}
+                className="row-interactive"
+              >
+                <td className="px-4 py-3">
+                  <b>{row.transactionid}</b>
+                  <span className="block text-xs text-slate-400">
+                    {kind} · {row.paymentmethod}
+                  </span>
+                </td>
 
-                    <span className="block text-xs text-slate-400">
-                      {kind} ·{" "}
-                      {
-                        row.paymentmethod
-                      }
-                    </span>
-                  </td>
+                <td className="px-4 py-3">
+                  <span className="font-medium text-ink">
+                    {row.projectname ?? "No project"}
+                  </span>
+                  <span className="block text-xs text-slate-400">
+                    {row.projectid ?? "—"}
+                  </span>
 
-                  <td className="px-4 py-3">
-                    <span className="font-medium text-ink">
-                      {row.projectname ??
-                        "No project"}
-                    </span>
-
-                    <span className="block text-xs text-slate-400">
-                      {row.projectid ??
-                        "—"}
-                    </span>
-
-                    {kind ===
-                      "Inflow" &&
-                      row.sourceofcash ===
-                        "Department" && (
-                        <span className="mt-1 block text-xs text-slate-500">
-                          Department:{" "}
-                          {
-                            row.department
-                          }
-                        </span>
-                      )}
-
-                    {kind ===
-                      "Inflow" &&
-                      row.sourceofcash ===
-                        "Client" &&
-                      row.clientname && (
-                        <span className="mt-1 block text-xs text-slate-500">
-                          Source:{" "}
-                          {
-                            row.clientname
-                          }
-                        </span>
-                      )}
-                  </td>
-
-                  {showPayee && (
-                    <td className="px-4 py-3">
-                      <span
-                        className={payeeTypeBadgeClass(
-                          row.payeetype,
-                        )}
-                      >
-                        {row.payeetype ??
-                          "—"}
+                  {kind === "Inflow" &&
+                    row.sourceofcash === "Department" && (
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Department: {row.department}
                       </span>
-
-                      {row.payeename &&
-                        row.payeetype !==
-                          "In-House" && (
-                          <span className="block text-xs text-slate-400">
-                            {
-                              row.payeename
-                            }
-                          </span>
-                        )}
-                    </td>
-                  )}
-
-                  <td className="px-4 py-3">
-                    {money(
-                      row.amount,
                     )}
-                  </td>
 
-                  <td className="px-4 py-3">
-                    {date(
-                      row.transactiondate,
+                  {kind === "Inflow" &&
+                    row.sourceofcash === "Client" &&
+                    row.clientname && (
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Source: {row.clientname}
+                      </span>
                     )}
-                  </td>
+                </td>
 
+                {showPayee && (
                   <td className="px-4 py-3">
                     <span
-                      className={statusBadgeClass(
-                        row.approvalstatus,
+                      className={payeeTypeBadgeClass(
+                        row.payeetype,
                       )}
                     >
-                      {
-                        row.approvalstatus
-                      }
+                      {row.payeetype ?? "—"}
                     </span>
+
+                    {row.payeename &&
+                      row.payeetype !== "In-House" && (
+                        <span className="block text-xs text-slate-400">
+                          {row.payeename}
+                        </span>
+                      )}
                   </td>
-                </tr>
-              ),
-            )}
+                )}
+
+                <td className="px-4 py-3">
+                  {money(row.amount)}
+                </td>
+                <td className="px-4 py-3">
+                  {date(row.transactiondate)}
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={statusBadgeClass(
+                      row.approvalstatus,
+                    )}
+                  >
+                    {row.approvalstatus}
+                  </span>
+                </td>
+              </tr>
+            ))}
 
             {!rows.length && (
               <tr>
                 <td
-                  colSpan={
-                    showPayee
-                      ? 6
-                      : 5
-                  }
+                  colSpan={showPayee ? 6 : 5}
                   className="px-4 py-10 text-center text-slate-400"
                 >
                   No records yet.
@@ -1567,7 +998,6 @@ function Field({
       >
         {label}
       </label>
-
       <input
         id={name}
         name={name}
@@ -1597,48 +1027,30 @@ function Select({
       >
         {label}
       </label>
-
       <select
         id={name}
         name={name}
         required={required}
         className="field-input"
       >
-        <option value="">
-          Select…
-        </option>
-
-        {values.map(
-          (value) => (
-            <option
-              key={
-                value[0]
-              }
-              value={
-                value[0]
-              }
-            >
-              {value[1]}
-            </option>
-          ),
-        )}
+        <option value="">Select…</option>
+        {values.map((value) => (
+          <option
+            key={value[0]}
+            value={value[0]}
+          >
+            {value[1]}
+          </option>
+        ))}
       </select>
     </div>
   );
 }
 
-function Error({
-  message,
-}: {
-  message: string;
-}) {
+function Error({ message }: { message: string }) {
   const isSuccess =
-    message
-      .toLowerCase()
-      .includes("submitted") ||
-    message
-      .toLowerCase()
-      .includes("success");
+    message.toLowerCase().includes("submitted") ||
+    message.toLowerCase().includes("success");
 
   return (
     <p
@@ -1656,8 +1068,7 @@ function Error({
 function Notice({
   children,
 }: {
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <p className="mt-3 text-sm text-amber-700">
