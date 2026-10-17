@@ -24,6 +24,7 @@ type Item = {
 
   payeename?: string | null;
   expenditurecategory?: string | null;
+  expensebreakdown?: { category: string; amount: string | number }[] | null;
 
   kind: "Cash Inflow" | "Cash Outflow";
 
@@ -351,12 +352,17 @@ export default function ApprovalQueue({
                     }
                   />
 
-                  <Detail
-                    label="Amount"
-                    value={money(
-                      row.amount,
-                    )}
-                  />
+                  <Detail label="Amount" value={money(row.amount)} />
+                  {row.kind === "Cash Outflow" && Array.isArray(row.expensebreakdown) && row.expensebreakdown.length > 0 && (
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Category breakdown</p>
+                      {row.expensebreakdown.map((line, index) => (
+                        <p key={`${line.category}-${index}`} className="mt-1 flex justify-between gap-3 text-sm text-ink">
+                          <span>{line.category}</span><strong>{money(line.amount)}</strong>
+                        </p>
+                      ))}
+                    </div>
+                  )}
 
                   <Detail
                     label="Request date"

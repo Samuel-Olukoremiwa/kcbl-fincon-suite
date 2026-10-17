@@ -175,6 +175,7 @@ function Inflow({
     useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [inflowAmount, setInflowAmount] = useState("");
 
   const canCreate =
     viewer.roleName === "Super User" ||
@@ -264,7 +265,7 @@ function Inflow({
               source === "Client" ? projectId : null,
             department:
               source === "Department" ? department : null,
-            amount: get("amount"),
+            amount: get("amount").replace(/,/g, ""),
             date: get("date"),
             method: get("method"),
             description: get("description"),
@@ -282,6 +283,7 @@ function Inflow({
       }
 
       form.reset();
+      setInflowAmount("");
       setSource("Client");
       setSelectedClient("");
       setSelectedProject("");
@@ -444,13 +446,11 @@ function Inflow({
               </div>
             )}
 
-            <Field
+            <MoneyInput
               label="Amount (₦)"
               name="amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
+              value={inflowAmount}
+              onChange={setInflowAmount}
             />
             <Field
               label="Transaction date"
@@ -519,6 +519,9 @@ function ExpenseRequest({
     useState<PayeeType>("Supplier");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [expenseLines, setExpenseLines] = useState<
+    { category: string; amount: string }[]
+  >([{ category: "", amount: "" }]);
   const [categories, setCategories] = useState<
     {
       categoryname: string;
@@ -562,10 +565,11 @@ function ExpenseRequest({
         ? category.isinhouse
         : !category.isinhouse,
     )
-    .map((category) => [
-      category.categoryname,
-      category.categoryname,
-    ]);
+    .map((category) => [category.categoryname, category.categoryname]);
+
+  const expenseTotal = expenseLines.reduce(
+    (sum, line) => sum + Number(line.amount || 0), 0,
+  );
 
   const filteredRows = useMemo(
     () =>
@@ -607,6 +611,13 @@ function ExpenseRequest({
       return;
     }
 
+    if (expenseLines.some((line) => !line.category || !(Number(line.amount) > 0)) ||
+        new Set(expenseLines.map((line) => line.category)).size !== expenseLines.length) {
+      setMsg("Select different categories and positive amounts for each line.");
+      setSaving(false);
+      return;
+    }
+
     try {
       const response = await fetch(
         "/api/transactions/outflow",
@@ -619,8 +630,10 @@ function ExpenseRequest({
             projectid: get("projectid"),
             payeetype: payee,
             payeeid,
-            category: get("category"),
-            amount: get("amount"),
+            categories: expenseLines.map((line) => ({
+              category: line.category,
+              amount: line.amount,
+            })),
             date: get("date"),
             method: get("method"),
             description: get("description"),
@@ -640,6 +653,7 @@ function ExpenseRequest({
 
       form.reset();
       setPayee("Supplier");
+      setExpenseLines([{ category: "", amount: "" }]);
       setMsg(
         result.payeeReconciliationRequired
           ? "Expense submitted for authorization. Supplier/subcontractor reconciliation will be required later."
@@ -705,7 +719,10 @@ function ExpenseRequest({
                   <button
                     type="button"
                     key={type}
-                    onClick={() => setPayee(type)}
+                    onClick={() => {
+                      setPayee(type);
+                      setExpenseLines([{ category: "", amount: "" }]);
+                    }}
                     className={
                       payee === type
                         ? "btn-primary"
@@ -743,21 +760,48 @@ function ExpenseRequest({
               </div>
             )}
 
-            <Select
-              label="Category"
-              name="category"
-              values={categoryValues}
-              required
-            />
-
-            <Field
-              label="Amount (₦)"
-              name="amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-            />
+            <div className="space-y-3">
+              <p className="field-label">Expense categories and amounts</p>
+              {expenseLines.map((line, index) => (
+                <div key={index} className="rounded-md border border-slate-200 p-3 space-y-2">
+                  <label className="field-label">Category {index + 1}</label>
+                  <select
+                    className="field-input"
+                    required
+                    value={line.category}
+                    onChange={(event) => setExpenseLines((old) =>
+                      old.map((item, i) => i === index ? { ...item, category: event.target.value } : item))}
+                  >
+                    <option value="">Select category…</option>
+                    {categoryValues.map(([value, label]) => (
+                      <option key={value} value={value} disabled={expenseLines.some((x, j) => j !== index && x.category === value)}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <MoneyInput
+                    label="Amount (₦)"
+                    value={line.amount}
+                    onChange={(amount) => setExpenseLines((old) =>
+                      old.map((item, i) => i === index ? { ...item, amount } : item))}
+                  />
+                  {expenseLines.length > 1 && (
+                    <button type="button" className="btn-secondary"
+                      onClick={() => setExpenseLines((old) => old.filter((_, i) => i !== index))}>
+                      Remove category
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-secondary"
+                disabled={expenseLines.length >= 30 || expenseLines.length >= categoryValues.length}
+                onClick={() => setExpenseLines((old) => [...old, { category: "", amount: "" }])}>
+                + Add another category
+              </button>
+              <p className="text-lg font-semibold">
+                Total expense: {money(expenseTotal)}
+              </p>
+            </div>
 
             <Field
               label="Transaction date"
@@ -1074,5 +1118,43 @@ function Notice({
     <p className="mt-3 text-sm text-amber-700">
       {children}
     </p>
+  );
+}
+
+
+function MoneyInput({
+  value,
+  onChange,
+  label,
+  name,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  name?: string;
+}) {
+  const display = value.replace(/^(\d+)(?=\d)/, "$1");
+  const parts = display.split(".");
+  const formatted = (parts[0] || "").replace(/\B(?=(\d{3})+(?!\d))/g, ",") +
+    (parts.length > 1 ? "." + parts[1] : "");
+  return (
+    <div>
+      <label className="field-label">{label}</label>
+      <input
+        name={name}
+        type="text"
+        inputMode="decimal"
+        className="field-input"
+        placeholder="0.00"
+        value={formatted}
+        required
+        onChange={(event) => {
+          let clean = event.target.value.replace(/,/g, "").replace(/[^\d.]/g, "");
+          const dot = clean.indexOf(".");
+          if (dot >= 0) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, "").slice(0, 2);
+          onChange(clean);
+        }}
+      />
+    </div>
   );
 }

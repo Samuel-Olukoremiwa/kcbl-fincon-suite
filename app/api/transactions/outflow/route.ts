@@ -60,8 +60,54 @@ export async function POST(request: Request) {
   const payeeid = body.payeeid
     ? String(body.payeeid).trim() || null
     : null;
-  const category = String(body.category ?? "").trim();
-  const amount = Number(body.amount);
+  const rawLines = Array.isArray(body.categories)
+    ? body.categories
+    : [{ category: body.category, amount: body.amount }];
+
+  if (rawLines.length < 1 || rawLines.length > 30) {
+    return NextResponse.json(
+      { error: "Choose between 1 and 30 expense categories." },
+      { status: 400 },
+    );
+  }
+
+  const breakdown: { category: string; amount: string }[] = [];
+  let totalCents = 0;
+  const seenCategories = new Set<string>();
+
+  for (const raw of rawLines) {
+    const categoryName = String(raw?.category ?? "").trim();
+    const amountText = String(raw?.amount ?? "").replace(/,/g, "").trim();
+    if (!categoryName || seenCategories.has(categoryName)) {
+      return NextResponse.json(
+        { error: "Select unique, nonempty expense categories." },
+        { status: 400 },
+      );
+    }
+    if (!/^(0|[1-9]\d*)(\.\d{1,2})?$/.test(amountText)) {
+      return NextResponse.json(
+        { error: `Invalid amount for ${categoryName}. Use up to two decimal places.` },
+        { status: 400 },
+      );
+    }
+    const numeric = Number(amountText);
+    const cents = Math.round(numeric * 100);
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      return NextResponse.json(
+        { error: `Enter a positive amount for ${categoryName}.` },
+        { status: 400 },
+      );
+    }
+    seenCategories.add(categoryName);
+    totalCents += cents;
+    if (!Number.isSafeInteger(totalCents)) {
+      return NextResponse.json({ error: "Expense total exceeds allowed range." }, { status: 400 });
+    }
+    breakdown.push({ category: categoryName, amount: (cents / 100).toFixed(2) });
+  }
+
+  const category = breakdown[0].category;
+  const amount = totalCents / 100;
   const transactionDate = String(body.date ?? "").trim();
   const paymentMethod = String(body.method ?? "").trim();
   const description =
@@ -154,47 +200,17 @@ export async function POST(request: Request) {
 
   const isPendingProject = project.status === "Pending";
 
-  const { data: categoryRow } = await supabase
+  const { data: categoryRows, error: categoryError } = await supabase
     .from("transactioncategories")
-    .select(
-      "categoryid,categoryname,isinhouse,active",
-    )
-    .eq("categoryname", category)
-    .eq("active", true)
-    .single();
+    .select("categoryname,isinhouse,active")
+    .in("categoryname", breakdown.map((line) => line.category))
+    .eq("active", true);
 
-  if (!categoryRow) {
+  if (categoryError || (categoryRows ?? []).length !== breakdown.length ||
+      (categoryRows ?? []).some((row) =>
+        Boolean(row.isinhouse) !== (payeetype === "In-House"))) {
     return NextResponse.json(
-      {
-        error:
-          "The selected expense category is no longer active.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (
-    payeetype === "In-House" &&
-    !categoryRow.isinhouse
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "The selected category is not an in-house category.",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (
-    payeetype !== "In-House" &&
-    categoryRow.isinhouse
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "An in-house category cannot be used for a supplier or subcontractor.",
-      },
+      { error: "One or more selected categories are inactive or inappropriate for this payee type." },
       { status: 400 },
     );
   }
@@ -270,6 +286,8 @@ export async function POST(request: Request) {
       subcontractorid:
         payeetype === "Subcontractor" ? payeeid : null,
       expenditurecategory: category,
+      expensepayeetype: payeetype,
+      expensebreakdown: breakdown,
       amount,
       transactiondate: transactionDate,
       paymentmethod: paymentMethod,

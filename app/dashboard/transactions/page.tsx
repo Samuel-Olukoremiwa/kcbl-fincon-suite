@@ -48,7 +48,7 @@ export default async function TransactionsPage() {
     supabase
       .from("cashoutflowexpenditure")
       .select(
-        "transactionid,projectid,supplierid,subcontractorid,expenditurecategory,amount,transactiondate,paymentmethod,description,makeruserid,approvalstatus,checkeruserid,rejectionreason",
+        "transactionid,projectid,supplierid,subcontractorid,expensepayeetype,expensebreakdown,expenditurecategory,amount,transactiondate,paymentmethod,description,makeruserid,approvalstatus,checkeruserid,rejectionreason",
       )
       .order("transactiondate", {
         ascending: false,
@@ -106,13 +106,15 @@ export default async function TransactionsPage() {
       projectname:
         projectNames.get(row.projectid) ?? row.projectid,
 
-      payeetype: hasSupplier
+      payeetype: row.expensepayeetype ?? (hasSupplier
         ? "Supplier"
         : hasSubcontractor
           ? "Subcontractor"
-          : "Unassigned",
+          : "Unassigned"),
 
-      payeename: hasSupplier
+      payeename: row.expensepayeetype === "In-House"
+        ? "In-House"
+        : hasSupplier
         ? supplierNames.get(row.supplierid) ??
           row.supplierid
         : hasSubcontractor
