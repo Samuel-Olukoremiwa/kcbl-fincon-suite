@@ -1,3 +1,4 @@
+
 import { redirect } from "next/navigation";
 import {
   FileText,
@@ -88,8 +89,10 @@ export default async function PortalPage() {
    * PROJECT PROGRESS
    * =========================================================
    *
-   * Only Authorized progress reports affect the percentage
-   * shown to the client.
+   * Only Project Manager reports authorized by MD Office
+   * can affect the progress percentage shown to clients.
+   *
+   * Internal Operations reports are excluded.
    *
    * Multiple reports may exist for the same project/week.
    *
@@ -119,6 +122,7 @@ export default async function PortalPage() {
         `,
       )
       .in("projectid", projectIds)
+      .eq("reporttype", "Project Manager")
       .eq("reviewstatus", "Authorized")
       .not("progresspct", "is", null)
       .order("reportweek", {
@@ -151,8 +155,9 @@ export default async function PortalPage() {
 
   /*
    * Reports are already sorted newest-first.
-   * Therefore, the first Authorized report found for a
-   * project becomes its current displayed progress.
+   * Therefore, the first authorized Project Manager
+   * report found for a project becomes its current
+   * displayed progress.
    */
   authorizedReports.forEach((report) => {
     if (!progressByProject.has(report.projectid)) {
@@ -733,10 +738,11 @@ export default async function PortalPage() {
 
             <p className="mt-1 text-sm text-slate-500">
               Project progress shown here is
-              based only on authorized progress
-              reports. New submissions do not
-              change the displayed percentage
-              until they are authorized.
+              based only on Project Manager
+              progress reports authorized by
+              MD Office. Internal Operations
+              submissions do not change the
+              displayed progress percentage.
             </p>
           </div>
         </div>

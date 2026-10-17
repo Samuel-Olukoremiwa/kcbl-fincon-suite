@@ -1,50 +1,125 @@
 import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  canManageProjectReports,
-  canSubmitProgressReports,
-} from "@/lib/access";
+import { canAccess } from "@/lib/access";
 
 export async function GET() {
   const viewer = await getViewer();
   const admin = createAdminClient();
 
-  let projectIds: string[] | null = null;
+  let projectIds:
+    | string[]
+    | null = null;
 
-  if (viewer.userType === "Client") {
-    const { data: client } = await admin
+  let managedProjectIds =
+    new Set<string>();
+
+  let operationsViewer = false;
+
+  if (
+    viewer.userType === "Client"
+  ) {
+    const {
+      data: client,
+    } = await admin
       .from("clients")
       .select("clientid")
-      .eq("linkeduserid", viewer.userId)
+      .eq(
+        "linkeduserid",
+        viewer.userId,
+      )
       .maybeSingle();
 
     if (!client) {
       return NextResponse.json([]);
     }
 
-    const { data: projects } = await admin
+    const {
+      data: projects,
+    } = await admin
       .from("projects")
       .select("projectid")
-      .eq("clientid", client.clientid);
+      .eq(
+        "clientid",
+        client.clientid,
+      );
 
-    projectIds = (projects ?? []).map(
-      (project) => project.projectid,
-    );
-  } else if (canSubmitProgressReports(viewer)) {
-    const { data: assignments } = await admin
-      .from("projectassignments")
-      .select("projectid")
-      .eq("userid", viewer.userId)
-      .eq("approvalstatus", "Approved")
-      .eq("active", true);
-
-    projectIds = (assignments ?? []).map(
-      (assignment) => assignment.projectid,
+    projectIds = (
+      projects ?? []
+    ).map(
+      (project) =>
+        project.projectid,
     );
   } else if (
-    !canManageProjectReports(viewer) &&
-    viewer.roleName !== "Super User"
+    viewer.userType === "Staff" &&
+    viewer.department === "Operations"
+  ) {
+    operationsViewer = true;
+
+    const {
+      data: assignments,
+      error: assignmentError,
+    } = await admin
+      .from("projectassignments")
+      .select(
+        "projectid,assignmentrole",
+      )
+      .eq(
+        "userid",
+        viewer.userId,
+      )
+      .eq(
+        "approvalstatus",
+        "Approved",
+      )
+      .eq(
+        "active",
+        true,
+      );
+
+    if (assignmentError) {
+      return NextResponse.json(
+        {
+          error:
+            assignmentError.message,
+        },
+        { status: 500 },
+      );
+    }
+
+    projectIds = Array.from(
+      new Set(
+        (
+          assignments ?? []
+        ).map(
+          (assignment) =>
+            assignment.projectid,
+        ),
+      ),
+    );
+
+    managedProjectIds =
+      new Set(
+        (
+          assignments ?? []
+        )
+          .filter(
+            (assignment) =>
+              assignment.assignmentrole ===
+              "Project Manager",
+          )
+          .map(
+            (assignment) =>
+              assignment.projectid,
+          ),
+      );
+  } else if (
+    !canAccess(
+      viewer,
+      "reports",
+    ) &&
+    viewer.roleName !==
+      "Super User"
   ) {
     return NextResponse.json(
       {
@@ -55,7 +130,10 @@ export async function GET() {
     );
   }
 
-  if (projectIds && projectIds.length === 0) {
+  if (
+    projectIds &&
+    projectIds.length === 0
+  ) {
     return NextResponse.json([]);
   }
 
@@ -66,9 +144,11 @@ export async function GET() {
         reportid,
         projectid,
         reportweek,
+        reporttype,
         filename,
         filesize,
         uploadedat,
+        uploadedbyuserid,
         updatedat,
         clientnotifiedat,
         reviewstatus,
@@ -76,26 +156,72 @@ export async function GET() {
         supervisorcomments,
         supervisorreviewedat,
         authorizedat,
+        authorizationcomments,
         projects(
           projecttitle,
           clientid,
           status,
-          clients(fullnameorcompanyname)
+          clients(
+            fullnameorcompanyname
+          )
         ),
-        users!projectreports_uploadedbyuserid_fkey(fullname),
-        reviewer:users!projectreports_supervisorreviewedbyuserid_fkey(fullname),
-        authorizer:users!projectreports_authorizedbyuserid_fkey(fullname)
+        users!projectreports_uploadedbyuserid_fkey(
+          fullname
+        ),
+        reviewer:users!projectreports_supervisorreviewedbyuserid_fkey(
+          fullname
+        ),
+        authorizer:users!projectreports_authorizedbyuserid_fkey(
+          fullname
+        ),
+        projectreportmedia(
+          mediaid,
+          filename,
+          filesize,
+          mimetype,
+          mediatype,
+          uploadedat
+        )
       `,
     )
-    .order("reportweek", { ascending: false })
-    .order("updatedat", { ascending: false })
-    .order("reportid", { ascending: false });
+    .order(
+      "reportweek",
+      { ascending: false },
+    )
+    .order(
+      "updatedat",
+      { ascending: false },
+    )
+    .order(
+      "reportid",
+      { ascending: false },
+    );
 
   if (projectIds) {
-    query = query.in("projectid", projectIds);
+    query = query.in(
+      "projectid",
+      projectIds,
+    );
   }
 
-  const { data, error } = await query;
+  if (
+    viewer.userType === "Client"
+  ) {
+    query = query
+      .eq(
+        "reporttype",
+        "Project Manager",
+      )
+      .eq(
+        "reviewstatus",
+        "Authorized",
+      );
+  }
+
+  const {
+    data,
+    error,
+  } = await query;
 
   if (error) {
     return NextResponse.json(
@@ -104,5 +230,19 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json(data ?? []);
+  let rows =
+    data ?? [];
+
+  if (operationsViewer) {
+    rows = rows.filter(
+      (report) =>
+        managedProjectIds.has(
+          report.projectid,
+        ) ||
+        report.uploadedbyuserid ===
+          viewer.userId,
+    );
+  }
+
+  return NextResponse.json(rows);
 }

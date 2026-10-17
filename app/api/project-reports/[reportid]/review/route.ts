@@ -8,42 +8,30 @@ export async function PATCH(
   {
     params,
   }: {
-    params: { reportid: string };
+    params: {
+      reportid: string;
+    };
   },
 ) {
   const viewer = await getViewer();
 
-  const {
-    progresspct,
-    comments,
-    decision,
-  } = await request.json();
-
-  if (viewer.department !== "Operations") {
+  if (
+    viewer.userType !== "Staff" ||
+    viewer.department !== "Operations"
+  ) {
     return NextResponse.json(
       {
         error:
-          "Only Operations may review a progress report.",
+          "Only the assigned Project Manager may review an Operations report.",
       },
       { status: 403 },
     );
   }
 
-  const progress = Number(progresspct);
-
-  if (
-    !Number.isFinite(progress) ||
-    progress < 0 ||
-    progress > 100
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "Progress percentage between 0 and 100 is required.",
-      },
-      { status: 400 },
-    );
-  }
+  const {
+    comments,
+    decision,
+  } = await request.json();
 
   if (
     decision !== "Reviewed" &&
@@ -51,14 +39,16 @@ export async function PATCH(
   ) {
     return NextResponse.json(
       {
-        error: "Invalid review decision.",
+        error:
+          "Invalid review decision.",
       },
       { status: 400 },
     );
   }
 
   const trimmedComments =
-    typeof comments === "string"
+    typeof comments ===
+    "string"
       ? comments.trim()
       : "";
 
@@ -75,7 +65,8 @@ export async function PATCH(
     );
   }
 
-  const admin = createAdminClient();
+  const admin =
+    createAdminClient();
 
   const {
     data: report,
@@ -85,19 +76,24 @@ export async function PATCH(
     .select(
       `
         projectid,
+        reporttype,
         reviewstatus,
         reportweek,
         uploadedbyuserid,
         filename
       `,
     )
-    .eq("reportid", params.reportid)
+    .eq(
+      "reportid",
+      params.reportid,
+    )
     .maybeSingle();
 
   if (reportError) {
     return NextResponse.json(
       {
-        error: reportError.message,
+        error:
+          reportError.message,
       },
       { status: 500 },
     );
@@ -106,57 +102,83 @@ export async function PATCH(
   if (!report) {
     return NextResponse.json(
       {
-        error: "Progress Report not found.",
+        error:
+          "Report not found.",
       },
       { status: 404 },
     );
   }
 
-  if (report.reviewstatus !== "Submitted") {
+  if (
+    report.reporttype !==
+    "Operations"
+  ) {
     return NextResponse.json(
       {
         error:
-          "Report is not awaiting supervisor review.",
+          "Project Manager progress reports are reviewed by MD Office, not through this review step.",
       },
       { status: 400 },
     );
   }
 
-  /*
-   * The reviewer must be an approved active supervisor
-   * assigned to this project.
-   */
+  if (
+    report.reviewstatus !==
+    "Submitted"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "This Operations report is no longer awaiting Project Manager review.",
+      },
+      { status: 400 },
+    );
+  }
+
   const {
-    data: assignment,
-    error: assignmentError,
+    data: managerAssignment,
+    error:
+      assignmentError,
   } = await admin
     .from("projectassignments")
     .select("assignmentid")
-    .eq("projectid", report.projectid)
-    .eq("userid", viewer.userId)
-    .eq("approvalstatus", "Approved")
-    .eq("active", true)
-    .in("assignmentrole", [
+    .eq(
+      "projectid",
+      report.projectid,
+    )
+    .eq(
+      "userid",
+      viewer.userId,
+    )
+    .eq(
+      "assignmentrole",
       "Project Manager",
-      "Senior Supervisor",
-      "Junior Supervisor",
-    ])
+    )
+    .eq(
+      "approvalstatus",
+      "Approved",
+    )
+    .eq(
+      "active",
+      true,
+    )
     .maybeSingle();
 
   if (assignmentError) {
     return NextResponse.json(
       {
-        error: assignmentError.message,
+        error:
+          assignmentError.message,
       },
       { status: 500 },
     );
   }
 
-  if (!assignment) {
+  if (!managerAssignment) {
     return NextResponse.json(
       {
         error:
-          "You are not an approved supervisor for this project.",
+          "Only the approved Project Manager for this project may review this report.",
       },
       { status: 403 },
     );
@@ -167,48 +189,52 @@ export async function PATCH(
       ? "Rejected"
       : "Reviewed";
 
-  /*
-   * Updating the row automatically updates updatedat
-   * through the database trigger.
-   */
   const {
     error: updateError,
   } = await admin
     .from("projectreports")
     .update({
-      reviewstatus: nextStatus,
-      progresspct: progress,
+      reviewstatus:
+        nextStatus,
       supervisorcomments:
-        trimmedComments || null,
+        trimmedComments ||
+        null,
       supervisorreviewedbyuserid:
         viewer.userId,
       supervisorreviewedat:
         new Date().toISOString(),
     })
-    .eq("reportid", params.reportid);
+    .eq(
+      "reportid",
+      params.reportid,
+    )
+    .eq(
+      "reviewstatus",
+      "Submitted",
+    );
 
   if (updateError) {
     return NextResponse.json(
       {
-        error: updateError.message,
+        error:
+          updateError.message,
       },
       { status: 400 },
     );
   }
 
-  /*
-   * Reviewed reports simply move to MD Office.
-   */
-  if (nextStatus !== "Rejected") {
+  if (
+    nextStatus !==
+    "Rejected"
+  ) {
     return NextResponse.json({
       ok: true,
       emailSent: false,
+      message:
+        "Operations Report approved by the Project Manager.",
     });
   }
 
-  /*
-   * Rejected reports notify the uploader.
-   */
   const [
     {
       data: uploader,
@@ -219,7 +245,9 @@ export async function PATCH(
   ] = await Promise.all([
     admin
       .from("users")
-      .select("email,fullname")
+      .select(
+        "email,fullname",
+      )
       .eq(
         "userid",
         report.uploadedbyuserid,
@@ -228,7 +256,9 @@ export async function PATCH(
 
     admin
       .from("projects")
-      .select("projecttitle")
+      .select(
+        "projecttitle",
+      )
       .eq(
         "projectid",
         report.projectid,
@@ -237,7 +267,8 @@ export async function PATCH(
   ]);
 
   const uploaderEmail =
-    typeof uploader?.email === "string"
+    typeof uploader?.email ===
+    "string"
       ? uploader.email.trim()
       : "";
 
@@ -259,48 +290,34 @@ export async function PATCH(
       to: uploaderEmail,
 
       subject:
-        `Progress Report rejected at supervisor review: ${projectTitle}`,
+        `Operations Report rejected by Project Manager: ${projectTitle}`,
 
       html: `
-        <div
-          style="
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #1e293b;
-          "
-        >
-          <h2>Progress Report Rejected</h2>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+          <h2>Operations Report Rejected</h2>
 
           <p>
             Hello ${uploader?.fullname ?? ""},
           </p>
 
           <p>
-            Your Progress Report for
+            Your Operations Report for
             <strong>${projectTitle}</strong>
             for the week of
             <strong>${report.reportweek}</strong>
-            was rejected during supervisor review.
+            was rejected by the Project Manager.
           </p>
 
           <p>
             <strong>Reason for rejection:</strong>
           </p>
 
-          <div
-            style="
-              padding: 12px;
-              background: #f8fafc;
-              border-left: 4px solid #dc2626;
-              margin: 12px 0;
-            "
-          >
+          <div style="padding: 12px; background: #f8fafc; border-left: 4px solid #dc2626; margin: 12px 0;">
             ${trimmedComments}
           </div>
 
           <p>
-            Please review the rejection reason and
-            resubmit a corrected Progress Report.
+            Please correct the report and submit a new version.
           </p>
 
           <p>
@@ -311,18 +328,14 @@ export async function PATCH(
       `,
     });
 
-  if (!result.sent) {
-    return NextResponse.json({
-      ok: true,
-      emailSent: false,
-      emailError:
-        result.error ??
-        "The uploader could not be emailed.",
-    });
-  }
-
   return NextResponse.json({
     ok: true,
-    emailSent: true,
+    emailSent:
+      result.sent,
+    emailError:
+      result.sent
+        ? undefined
+        : result.error ??
+          "The uploader could not be emailed.",
   });
 }

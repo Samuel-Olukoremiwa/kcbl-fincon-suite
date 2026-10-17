@@ -11,18 +11,27 @@ export async function GET(
   {
     params,
   }: {
-    params: { reportid: string };
+    params: {
+      reportid: string;
+    };
   },
 ) {
   const viewer = await getViewer();
-  const admin = createAdminClient();
+  const admin =
+    createAdminClient();
 
   const {
     data: report,
   } = await admin
     .from("projectreports")
     .select(
-      "projectid,storagepath,reviewstatus",
+      `
+        projectid,
+        storagepath,
+        reviewstatus,
+        reporttype,
+        uploadedbyuserid
+      `,
     )
     .eq(
       "reportid",
@@ -33,7 +42,8 @@ export async function GET(
   if (!report) {
     return NextResponse.json(
       {
-        error: "Report not found.",
+        error:
+          "Report not found.",
       },
       { status: 404 },
     );
@@ -42,13 +52,14 @@ export async function GET(
   const canRead =
     await canReadProjectReport(
       viewer,
-      report.projectid,
+      report,
     );
 
   if (!canRead) {
     return NextResponse.json(
       {
-        error: "Report not found.",
+        error:
+          "Report not found.",
       },
       { status: 404 },
     );
@@ -64,7 +75,10 @@ export async function GET(
       60,
     );
 
-  if (error || !data) {
+  if (
+    error ||
+    !data
+  ) {
     return NextResponse.json(
       {
         error:

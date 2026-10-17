@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -84,7 +85,7 @@ export default function Sidebar({
       items: [
         {
           href: "/dashboard/reports",
-          label: "Progress Reports",
+          label: "Project Reports",
           icon: FileText,
           module: "reports",
         },
@@ -139,7 +140,7 @@ export default function Sidebar({
         },
         {
           href: "/dashboard/reports",
-          label: "Progress Reports",
+          label: "Project Reports",
           icon: FileText,
           module: "reports",
         },

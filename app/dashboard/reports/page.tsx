@@ -7,82 +7,182 @@ import {
   canSubmitProgressReports,
 } from "@/lib/access";
 import { createAdminClient } from "@/lib/supabase/admin";
-import ReportWorkspace from "./report-workspace";
+import ReportWorkspace from "./report-workspace-v2";
+
+type ProjectWithRole = {
+  projectid: string;
+  projecttitle: string;
+  status?: string;
+  assignmentrole: string;
+  clients?: {
+    fullnameorcompanyname: string;
+  } | null;
+};
 
 export default async function ReportsPage() {
   const viewer = await getViewer();
 
-  const canUpload =
-    canSubmitProgressReports(viewer);
+  if (
+    !canAccess(
+      viewer,
+      "reports",
+    ) &&
+    viewer.roleName !==
+      "Super User"
+  ) {
+    redirect(
+      "/dashboard?error=forbidden",
+    );
+  }
 
-  const canReview =
-    viewer.department === "Operations";
+  const canUpload =
+    canSubmitProgressReports(
+      viewer,
+    );
 
   const canAuthorize =
-    canManageProjectReports(viewer) ||
-    viewer.roleName === "Super User";
+    canManageProjectReports(
+      viewer,
+    ) ||
+    viewer.roleName ===
+      "Super User";
 
-  if (
-    !canAccess(viewer, "reports") ||
-    (viewer.userType !== "Client" &&
-      !canUpload &&
-      !canAuthorize &&
-      viewer.roleName !== "Super User")
-  ) {
-    redirect("/dashboard?error=forbidden");
-  }
+  const admin =
+    createAdminClient();
 
-  const admin = createAdminClient();
+  let projects:
+    ProjectWithRole[] = [];
 
-  let projects: any[] = [];
-
-  if (canSubmitProgressReports(viewer)) {
-    const { data } = await admin
-      .from("projectassignments")
+  if (canUpload) {
+    const {
+      data,
+    } = await admin
+      .from(
+        "projectassignments",
+      )
       .select(
         `
-        projects!inner(
-          projectid,
-          projecttitle,
-          clientid,
-          status,
-          clients(fullnameorcompanyname)
-        )
-      `,
+          assignmentrole,
+          projects!inner(
+            projectid,
+            projecttitle,
+            clientid,
+            status,
+            clients(
+              fullnameorcompanyname
+            )
+          )
+        `,
       )
-      .eq("userid", viewer.userId)
-      .eq("approvalstatus", "Approved")
-      .eq("active", true);
+      .eq(
+        "userid",
+        viewer.userId,
+      )
+      .eq(
+        "approvalstatus",
+        "Approved",
+      )
+      .eq(
+        "active",
+        true,
+      );
 
-    projects = (data ?? [])
-      .map((assignment: any) => assignment.projects)
-      .filter(Boolean);
+    const byProject =
+      new Map<
+        string,
+        ProjectWithRole
+      >();
+
+    for (
+      const row of
+        data ?? []
+    ) {
+      const project =
+        row.projects as unknown as {
+          projectid: string;
+          projecttitle: string;
+          status?: string;
+          clients?: {
+            fullnameorcompanyname: string;
+          } | null;
+        } | null;
+
+      if (!project) {
+        continue;
+      }
+
+      const existing =
+        byProject.get(
+          project.projectid,
+        );
+
+      if (
+        !existing ||
+        row.assignmentrole ===
+          "Project Manager"
+      ) {
+        byProject.set(
+          project.projectid,
+          {
+            ...project,
+            assignmentrole:
+              row.assignmentrole,
+          },
+        );
+      }
+    }
+
+    projects =
+      Array.from(
+        byProject.values(),
+      ).sort(
+        (a, b) =>
+          a.projecttitle.localeCompare(
+            b.projecttitle,
+          ),
+      );
   }
+
+  const canReview =
+    projects.some(
+      (project) =>
+        project.assignmentrole ===
+        "Project Manager",
+    );
 
   return (
     <div>
       <header className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-navy text-white">
-          <FileText size={20} />
+          <FileText
+            size={20}
+          />
         </div>
 
         <div>
           <h1 className="text-xl font-semibold">
-            Progress Reports
+            Project Reports
           </h1>
 
           <p className="text-sm text-slate-500">
-            Submit, review, authorize, view, and download project progress
-            reports.
+            Operations reports are approved by the Project Manager. Project Manager Progress Reports are reviewed by MD Office before becoming client-facing.
           </p>
         </div>
       </header>
 
       <ReportWorkspace
-        projects={projects}
-        canUpload={canUpload}
-        canReview={canReview}
-        canAuthorize={canAuthorize}
+        projects={
+          projects
+        }
+        canUpload={
+          canUpload
+        }
+        canReview={
+          canReview
+        }
+        canAuthorize={
+          canAuthorize
+        }
       />
     </div>
   );

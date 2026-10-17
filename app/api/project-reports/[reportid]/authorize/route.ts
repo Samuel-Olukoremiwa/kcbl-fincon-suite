@@ -9,7 +9,9 @@ export async function PATCH(
   {
     params,
   }: {
-    params: { reportid: string };
+    params: {
+      reportid: string;
+    };
   },
 ) {
   const viewer = await getViewer();
@@ -20,37 +22,45 @@ export async function PATCH(
   } = await request.json();
 
   if (
-    !canManageProjectReports(viewer) &&
-    viewer.roleName !== "Super User"
+    !canManageProjectReports(
+      viewer,
+    ) &&
+    viewer.roleName !==
+      "Super User"
   ) {
     return NextResponse.json(
       {
         error:
-          "Only an MD Office Authorizer may authorize a reviewed progress report.",
+          "Only MD Office may review and authorize a Project Manager Progress Report.",
       },
       { status: 403 },
     );
   }
 
   if (
-    decision !== "Authorized" &&
-    decision !== "Rejected"
+    decision !==
+      "Authorized" &&
+    decision !==
+      "Rejected"
   ) {
     return NextResponse.json(
       {
-        error: "Invalid decision.",
+        error:
+          "Invalid decision.",
       },
       { status: 400 },
     );
   }
 
   const trimmedComments =
-    typeof comments === "string"
+    typeof comments ===
+    "string"
       ? comments.trim()
       : "";
 
   if (
-    decision === "Rejected" &&
+    decision ===
+      "Rejected" &&
     !trimmedComments
   ) {
     return NextResponse.json(
@@ -62,7 +72,8 @@ export async function PATCH(
     );
   }
 
-  const admin = createAdminClient();
+  const admin =
+    createAdminClient();
 
   const {
     data: report,
@@ -72,19 +83,24 @@ export async function PATCH(
     .select(
       `
         reviewstatus,
+        reporttype,
         progresspct,
         projectid,
         reportweek,
         uploadedbyuserid
       `,
     )
-    .eq("reportid", params.reportid)
+    .eq(
+      "reportid",
+      params.reportid,
+    )
     .maybeSingle();
 
   if (reportError) {
     return NextResponse.json(
       {
-        error: reportError.message,
+        error:
+          reportError.message,
       },
       { status: 500 },
     );
@@ -93,86 +109,130 @@ export async function PATCH(
   if (!report) {
     return NextResponse.json(
       {
-        error: "Progress Report not found.",
+        error:
+          "Progress Report not found.",
       },
       { status: 404 },
     );
   }
 
-  /*
-   * Only Reviewed reports can reach MD Office.
-   */
   if (
-    report.reviewstatus !== "Reviewed" ||
-    report.progresspct === null
+    report.reporttype !==
+    "Project Manager"
   ) {
     return NextResponse.json(
       {
         error:
-          "A supervisor review and progress percentage are required first.",
+          "Only Project Manager Progress Reports are reviewed by MD Office.",
       },
       { status: 400 },
     );
   }
 
-  /*
-   * The percentage entered during supervisor review
-   * is preserved.
-   */
+  if (
+    ![
+      "Submitted",
+      "Reviewed",
+    ].includes(
+      report.reviewstatus,
+    ) ||
+    report.progresspct ===
+      null
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "This Project Manager Progress Report is not awaiting MD Office review or does not contain a progress percentage.",
+      },
+      { status: 400 },
+    );
+  }
+
   const {
     error: updateError,
   } = await admin
     .from("projectreports")
     .update({
-      reviewstatus: decision,
+      reviewstatus:
+        decision,
       authorizedbyuserid:
         viewer.userId,
       authorizedat:
         new Date().toISOString(),
       authorizationcomments:
-        decision === "Rejected"
-          ? trimmedComments
-          : null,
+        trimmedComments ||
+        null,
     })
-    .eq("reportid", params.reportid);
+    .eq(
+      "reportid",
+      params.reportid,
+    )
+    .in(
+      "reviewstatus",
+      [
+        "Submitted",
+        "Reviewed",
+      ],
+    );
 
   if (updateError) {
     return NextResponse.json(
       {
-        error: updateError.message,
+        error:
+          updateError.message,
       },
       { status: 400 },
     );
   }
 
-  let uploaderEmailSent = false;
-  let clientEmailSent = false;
+  let uploaderEmailSent =
+    false;
+
+  let clientEmailSent =
+    false;
+
+  let emailError:
+    | string
+    | undefined;
 
   const {
     data: project,
   } = await admin
     .from("projects")
     .select(
-      "projecttitle,clients!inner(fullnameorcompanyname,email)",
+      `
+        projecttitle,
+        clients!inner(
+          fullnameorcompanyname,
+          email
+        )
+      `,
     )
-    .eq("projectid", report.projectid)
+    .eq(
+      "projectid",
+      report.projectid,
+    )
     .maybeSingle();
 
   const client =
     project?.clients as unknown as {
-      fullnameorcompanyname: string;
-      email: string | null;
+      fullnameorcompanyname:
+        string;
+      email:
+        string | null;
     } | null;
 
-  /*
-   * MD Office rejection -> uploader notification.
-   */
-  if (decision === "Rejected") {
+  if (
+    decision ===
+    "Rejected"
+  ) {
     const {
       data: uploader,
     } = await admin
       .from("users")
-      .select("email,fullname")
+      .select(
+        "email,fullname",
+      )
       .eq(
         "userid",
         report.uploadedbyuserid,
@@ -180,29 +240,27 @@ export async function PATCH(
       .maybeSingle();
 
     const uploaderEmail =
-      typeof uploader?.email === "string"
+      typeof uploader?.email ===
+      "string"
         ? uploader.email.trim()
         : "";
 
-    if (uploaderEmail) {
+    if (!uploaderEmail) {
+      emailError =
+        "The uploader does not have an email address.";
+    } else {
       const result =
         await sendProjectReportEmail({
           to: uploaderEmail,
 
           subject:
-            `Progress Report rejected at MD Office authorization: ${
+            `Project Manager Progress Report rejected by MD Office: ${
               project?.projecttitle ??
               report.projectid
             }`,
 
           html: `
-            <div
-              style="
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                color: #1e293b;
-              "
-            >
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
               <h2>Progress Report Rejected</h2>
 
               <p>
@@ -210,33 +268,25 @@ export async function PATCH(
               </p>
 
               <p>
-                Your Progress Report for
+                Your Project Manager Progress Report for
                 <strong>
                   ${project?.projecttitle ?? report.projectid}
                 </strong>
                 for the week of
                 <strong>${report.reportweek}</strong>
-                was rejected during MD Office authorization.
+                was rejected by MD Office.
               </p>
 
               <p>
                 <strong>Reason for rejection:</strong>
               </p>
 
-              <div
-                style="
-                  padding: 12px;
-                  background: #f8fafc;
-                  border-left: 4px solid #dc2626;
-                  margin: 12px 0;
-                "
-              >
+              <div style="padding: 12px; background: #f8fafc; border-left: 4px solid #dc2626; margin: 12px 0;">
                 ${trimmedComments}
               </div>
 
               <p>
-                Please review the rejection reason and
-                resubmit a corrected Progress Report.
+                Please correct the report and submit a new version.
               </p>
 
               <p>
@@ -247,101 +297,113 @@ export async function PATCH(
           `,
         });
 
-      uploaderEmailSent = result.sent;
+      uploaderEmailSent =
+        result.sent;
+
+      if (!result.sent) {
+        emailError =
+          result.error ??
+          "The uploader could not be emailed.";
+      }
     }
   }
 
-  /*
-   * ONLY Authorized reports notify the client.
-   */
   if (
-    decision === "Authorized" &&
-    client?.email
+    decision ===
+      "Authorized"
   ) {
-    const result =
-      await sendProjectReportEmail({
-        to: client.email,
+    if (!client?.email) {
+      emailError =
+        "The client does not have an email address.";
+    } else {
+      const result =
+        await sendProjectReportEmail({
+          to: client.email,
 
-        subject:
-          `Your project report is available: ${
-            project?.projecttitle ??
-            report.projectid
-          }`,
+          subject:
+            `Your project progress report is available: ${
+              project?.projecttitle ??
+              report.projectid
+            }`,
 
-        html: `
-          <div
-            style="
-              font-family: Arial, sans-serif;
-              line-height: 1.6;
-              color: #1e293b;
-            "
-          >
-            <h2>Progress Report Available</h2>
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b;">
+              <h2>Progress Report Available</h2>
 
-            <p>
-              Hello ${client.fullnameorcompanyname},
-            </p>
+              <p>
+                Hello ${client.fullnameorcompanyname},
+              </p>
 
-            <p>
-              Your weekly Progress Report for
-              <strong>
-                ${project?.projecttitle ?? report.projectid}
-              </strong>
-              is now available in your secure FinCon Suite
-              project portal.
-            </p>
+              <p>
+                The authorized weekly Progress Report for
+                <strong>
+                  ${project?.projecttitle ?? report.projectid}
+                </strong>
+                is now available in your secure FinCon Suite project portal.
+              </p>
 
-            <p>
-              Please sign in to view or download the PDF.
-            </p>
+              <p>
+                Please sign in to view or download the PDF and approved report media.
+              </p>
 
-            <p>
-              Regards,<br />
-              KCBL FinCon Suite
-            </p>
-          </div>
-        `,
-      });
-
-    clientEmailSent = result.sent;
-
-    /*
-     * Record notification only after successful delivery.
-     */
-    if (result.sent) {
-      await admin
-        .from("projectreportnotifications")
-        .insert({
-          notificationkey:
-            `CLIENT_REPORT_AVAILABLE:${params.reportid}`,
-          eventtype:
-            "CLIENT_REPORT_AVAILABLE",
-          reportweek:
-            report.reportweek,
-          reportid:
-            params.reportid,
-          recipientemail:
-            client.email,
+              <p>
+                Regards,<br />
+                KCBL FinCon Suite
+              </p>
+            </div>
+          `,
         });
 
-      await admin
-        .from("projectreports")
-        .update({
-          clientnotifiedat:
-            new Date().toISOString(),
-        })
-        .eq(
-          "reportid",
-          params.reportid,
-        );
+      clientEmailSent =
+        result.sent;
+
+      if (!result.sent) {
+        emailError =
+          result.error ??
+          "The client could not be emailed.";
+      }
+
+      if (result.sent) {
+        await admin
+          .from(
+            "projectreportnotifications",
+          )
+          .insert({
+            notificationkey:
+              `CLIENT_REPORT_AVAILABLE:${params.reportid}`,
+            eventtype:
+              "CLIENT_REPORT_AVAILABLE",
+            reportweek:
+              report.reportweek,
+            reportid:
+              params.reportid,
+            recipientemail:
+              client.email,
+          });
+
+        await admin
+          .from(
+            "projectreports",
+          )
+          .update({
+            clientnotifiedat:
+              new Date().toISOString(),
+          })
+          .eq(
+            "reportid",
+            params.reportid,
+          );
+      }
     }
   }
 
   return NextResponse.json({
     ok: true,
     emailSent:
-      decision === "Rejected"
+      decision ===
+      "Rejected"
         ? uploaderEmailSent
         : clientEmailSent,
+    emailError,
   });
 }

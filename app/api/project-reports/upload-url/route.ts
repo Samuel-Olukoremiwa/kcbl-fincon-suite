@@ -4,10 +4,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   MAX_REPORT_BYTES,
   REPORT_BUCKET,
+  reportTypeForAssignmentRole,
   validReportWeek,
 } from "@/lib/project-reports";
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+) {
   const viewer = await getViewer();
 
   if (
@@ -17,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Only assigned Operations staff may upload Progress Reports.",
+          "Only assigned Operations staff may upload project reports.",
       },
       { status: 403 },
     );
@@ -33,13 +36,22 @@ export async function POST(request: Request) {
 
   if (
     !projectid ||
-    !validReportWeek(reportweek) ||
-    typeof filename !== "string" ||
-    !filename.toLowerCase().endsWith(".pdf") ||
-    mimetype !== "application/pdf" ||
-    !Number.isInteger(filesize) ||
+    !validReportWeek(
+      reportweek,
+    ) ||
+    typeof filename !==
+      "string" ||
+    !filename
+      .toLowerCase()
+      .endsWith(".pdf") ||
+    mimetype !==
+      "application/pdf" ||
+    !Number.isInteger(
+      filesize,
+    ) ||
     filesize < 1 ||
-    filesize > MAX_REPORT_BYTES
+    filesize >
+      MAX_REPORT_BYTES
   ) {
     return NextResponse.json(
       {
@@ -50,58 +62,98 @@ export async function POST(request: Request) {
     );
   }
 
-  const admin = createAdminClient();
+  const admin =
+    createAdminClient();
 
-  const { data: project } = await admin
+  const {
+    data: project,
+  } = await admin
     .from("projects")
     .select("projectid")
-    .eq("projectid", projectid)
+    .eq(
+      "projectid",
+      projectid,
+    )
     .maybeSingle();
 
   if (!project) {
     return NextResponse.json(
-      { error: "Project was not found." },
+      {
+        error:
+          "Project was not found.",
+      },
       { status: 404 },
     );
   }
 
-  const { data: assignment } = await admin
+  const {
+    data: assignments,
+    error: assignmentError,
+  } = await admin
     .from("projectassignments")
-    .select("assignmentid")
-    .eq("projectid", projectid)
-    .eq("userid", viewer.userId)
-    .eq("approvalstatus", "Approved")
-    .eq("active", true)
-    .maybeSingle();
+    .select(
+      "assignmentid,assignmentrole",
+    )
+    .eq(
+      "projectid",
+      projectid,
+    )
+    .eq(
+      "userid",
+      viewer.userId,
+    )
+    .eq(
+      "approvalstatus",
+      "Approved",
+    )
+    .eq(
+      "active",
+      true,
+    );
 
-  if (!assignment) {
+  if (
+    assignmentError ||
+    !assignments?.length
+  ) {
     return NextResponse.json(
       {
         error:
+          assignmentError?.message ??
           "You are not assigned to this project.",
       },
-      { status: 403 },
+      {
+        status:
+          assignmentError
+            ? 500
+            : 403,
+      },
     );
   }
 
-  /*
-   * Multiple reports are intentionally allowed for the
-   * same project and reporting week.
-   *
-   * Do NOT add a duplicate-report check here.
-   */
+  const assignment =
+    assignments.find(
+      (item) =>
+        item.assignmentrole ===
+        "Project Manager",
+    ) ?? assignments[0];
 
-  const safeName = filename.replace(
-    /[^a-zA-Z0-9._-]/g,
-    "_",
-  );
+  const safeName =
+    filename.replace(
+      /[^a-zA-Z0-9._-]/g,
+      "_",
+    );
 
   const storagepath =
     `${projectid}/${reportweek}/${crypto.randomUUID()}-${safeName}`;
 
-  const { data, error } = await admin.storage
+  const {
+    data,
+    error,
+  } = await admin.storage
     .from(REPORT_BUCKET)
-    .createSignedUploadUrl(storagepath);
+    .createSignedUploadUrl(
+      storagepath,
+    );
 
   if (error) {
     return NextResponse.json(
@@ -113,5 +165,9 @@ export async function POST(request: Request) {
   return NextResponse.json({
     storagepath,
     token: data.token,
+    reporttype:
+      reportTypeForAssignmentRole(
+        assignment.assignmentrole,
+      ),
   });
 }
