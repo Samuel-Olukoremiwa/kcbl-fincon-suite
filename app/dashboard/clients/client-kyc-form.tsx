@@ -15,6 +15,7 @@ const Field = ({
     <label className="field-label" htmlFor={name}>
       {label}
     </label>
+
     <input
       id={name}
       name={name}
@@ -59,6 +60,7 @@ export default function ClientKycForm({
   currentUserId,
   existingIds,
   clientUsers = [],
+  requiresApproval = false,
 }: {
   currentUserId: string;
   existingIds?: string[];
@@ -67,126 +69,293 @@ export default function ClientKycForm({
     fullname: string;
     email: string;
   }[];
+  requiresApproval?: boolean;
 }) {
-  const router = useRouter();
+  const router =
+    useRouter();
 
-  const [type, setType] = useState("Individual");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(
-    null,
-  );
+  void currentUserId;
+  void existingIds;
+
+  const [
+    type,
+    setType,
+  ] =
+    useState(
+      "Individual",
+    );
+
+  const [
+    saving,
+    setSaving,
+  ] =
+    useState(false);
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<
+      string | null
+    >(null);
+
+  const [
+    success,
+    setSuccess,
+  ] =
+    useState<
+      string | null
+    >(null);
 
   async function submit(
-    e: React.FormEvent<HTMLFormElement>,
+    event:
+      React.FormEvent<HTMLFormElement>,
   ) {
-    e.preventDefault();
+    event.preventDefault();
 
-    setError(null);
-    setSuccess(null);
-    setSaving(true);
+    setError(
+      null,
+    );
 
-    const form = e.currentTarget;
-    const data = new FormData(form);
+    setSuccess(
+      null,
+    );
 
-    const get = (name: string) =>
-      String(data.get(name) ?? "").trim();
+    setSaving(
+      true,
+    );
+
+    const form =
+      event.currentTarget;
+
+    const data =
+      new FormData(
+        form,
+      );
+
+    const get = (
+      name: string,
+    ) =>
+      String(
+        data.get(
+          name,
+        ) ??
+          "",
+      ).trim();
 
     if (
-      type === "Corporate" &&
-      !get("directorName")
+      type ===
+        "Corporate" &&
+      !get(
+        "directorName",
+      )
     ) {
-      setSaving(false);
+      setSaving(
+        false,
+      );
+
       setError(
         "A Corporate client needs at least one director or authorised signatory.",
       );
+
       return;
     }
 
     try {
-      const response = await fetch("/api/clients", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type,
-          name: get("name"),
-          phone: get("phone"),
-          email: get("email"),
-          address: get("address"),
+      const response =
+        await fetch(
+          "/api/clients",
+          {
+            method:
+              "POST",
 
-          idType: get("idType"),
-          idNumber: get("idNumber"),
-          issuer: get("issuer"),
-          expiry: get("expiry"),
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          rcNumber: get("rcNumber"),
-          business: get("business"),
-          directorName: get("directorName"),
-          directorPosition: get("directorPosition"),
-          directorDate: get("directorDate"),
+            body:
+              JSON.stringify(
+                {
+                  type,
+                  name:
+                    get(
+                      "name",
+                    ),
+                  phone:
+                    get(
+                      "phone",
+                    ),
+                  email:
+                    get(
+                      "email",
+                    ),
+                  address:
+                    get(
+                      "address",
+                    ),
 
-          ownerName: get("ownerName"),
-          ownership: get("ownership"),
-          ownerContact: get("ownerContact"),
+                  idType:
+                    get(
+                      "idType",
+                    ),
+                  idNumber:
+                    get(
+                      "idNumber",
+                    ),
+                  issuer:
+                    get(
+                      "issuer",
+                    ),
+                  expiry:
+                    get(
+                      "expiry",
+                    ),
 
-          payment: get("payment"),
-          source: get("source"),
-          supportingDoc: get("supportingDoc"),
+                  rcNumber:
+                    get(
+                      "rcNumber",
+                    ),
+                  business:
+                    get(
+                      "business",
+                    ),
+                  directorName:
+                    get(
+                      "directorName",
+                    ),
+                  directorPosition:
+                    get(
+                      "directorPosition",
+                    ),
+                  directorDate:
+                    get(
+                      "directorDate",
+                    ),
 
-          declaration: get("declaration"),
-          declarationDate: get("declarationDate"),
+                  ownerName:
+                    get(
+                      "ownerName",
+                    ),
+                  ownership:
+                    get(
+                      "ownership",
+                    ),
+                  ownerContact:
+                    get(
+                      "ownerContact",
+                    ),
 
-          linkedUser: get("linkedUser"),
+                  payment:
+                    get(
+                      "payment",
+                    ),
+                  source:
+                    get(
+                      "source",
+                    ),
+                  supportingDoc:
+                    get(
+                      "supportingDoc",
+                    ),
 
-          risk: get("risk"),
-          riskComments: get("riskComments"),
-        }),
-      });
+                  declaration:
+                    get(
+                      "declaration",
+                    ),
+                  declarationDate:
+                    get(
+                      "declarationDate",
+                    ),
 
-      const result = await response.json();
+                  linkedUser:
+                    get(
+                      "linkedUser",
+                    ),
 
-      if (!response.ok) {
+                  risk:
+                    get(
+                      "risk",
+                    ),
+                  riskComments:
+                    get(
+                      "riskComments",
+                    ),
+                },
+              ),
+          },
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok
+      ) {
         setError(
           result.error ??
-            "Could not create the client.",
+            "Could not submit the client onboarding.",
         );
+
         return;
       }
 
-      if (response.status === 207) {
-        setError(result.error);
-        return;
+      if (
+        result.pending
+      ) {
+        setSuccess(
+          result.message ??
+            "Client onboarding submitted for approval.",
+        );
+      } else {
+        setSuccess(
+          result.emailSent
+            ? `${result.clientid} created successfully. Client Portal login details were sent to ${get(
+                "email",
+              )}.`
+            : `${result.clientid} created successfully, but the Client Portal email could not be sent.`,
+        );
       }
-
-      setSuccess(
-        result.emailSent
-          ? `${result.clientid} created successfully. Client Portal login details and password-reset instructions were sent to ${get(
-              "email",
-            )}.`
-          : `${result.clientid} created successfully, but the Client Portal email could not be sent.`,
-      );
 
       form.reset();
-      setType("Individual");
+
+      setType(
+        "Individual",
+      );
+
       router.refresh();
-    } catch (error) {
+    } catch (
+      submitError
+    ) {
       setError(
-        error instanceof Error
-          ? error.message
+        submitError instanceof
+        Error
+          ? submitError.message
           : "An unexpected error occurred.",
       );
     } finally {
-      setSaving(false);
+      setSaving(
+        false,
+      );
     }
   }
 
   return (
-    <form onSubmit={submit} noValidate>
+    <form
+      onSubmit={
+        submit
+      }
+      noValidate
+    >
       <p className="section-title">
         New client KYC intake
       </p>
+
+      {requiresApproval && (
+        <p className="mt-1 text-sm text-slate-500">
+          This submission will remain Pending until a Business Development Authorizer approves it. No Client Portal account is created before approval.
+        </p>
+      )}
 
       <div className="mt-4">
         <label
@@ -199,15 +368,31 @@ export default function ClientKycForm({
         <select
           id="type"
           name="type"
-          value={type}
-          onChange={(event) =>
-            setType(event.target.value)
+          value={
+            type
+          }
+          onChange={(
+            event,
+          ) =>
+            setType(
+              event
+                .target
+                .value,
+            )
           }
           className="field-input"
         >
-          <option>Individual</option>
-          <option>Corporate</option>
-          <option>Other</option>
+          <option>
+            Individual
+          </option>
+
+          <option>
+            Corporate
+          </option>
+
+          <option>
+            Other
+          </option>
         </select>
       </div>
 
@@ -216,14 +401,18 @@ export default function ClientKycForm({
           label="Full name / company name"
           name="name"
           required
-          maxLength={150}
+          maxLength={
+            150
+          }
         />
 
         <Field
           label="Phone number"
           name="phone"
           required
-          maxLength={15}
+          maxLength={
+            15
+          }
         />
       </div>
 
@@ -233,7 +422,9 @@ export default function ClientKycForm({
           name="email"
           type="email"
           required
-          maxLength={100}
+          maxLength={
+            100
+          }
         />
       </div>
 
@@ -242,11 +433,14 @@ export default function ClientKycForm({
           label="Address"
           name="address"
           required
-          maxLength={200}
+          maxLength={
+            200
+          }
         />
       </div>
 
-      {type === "Individual" && (
+      {type ===
+        "Individual" && (
         <>
           <p className="section-title mt-6">
             Identification
@@ -268,14 +462,18 @@ export default function ClientKycForm({
               label="ID number"
               name="idNumber"
               required
-              maxLength={20}
+              maxLength={
+                20
+              }
             />
 
             <Field
               label="Issuing authority"
               name="issuer"
               required
-              maxLength={50}
+              maxLength={
+                50
+              }
             />
 
             <Field
@@ -288,7 +486,8 @@ export default function ClientKycForm({
         </>
       )}
 
-      {type === "Corporate" && (
+      {type ===
+        "Corporate" && (
         <>
           <p className="section-title mt-6">
             Corporate & ownership
@@ -299,14 +498,18 @@ export default function ClientKycForm({
               label="RC number"
               name="rcNumber"
               required
-              maxLength={15}
+              maxLength={
+                15
+              }
             />
 
             <Field
               label="Nature of business"
               name="business"
               required
-              maxLength={100}
+              maxLength={
+                100
+              }
             />
 
             <Field
@@ -319,7 +522,9 @@ export default function ClientKycForm({
               label="Position"
               name="directorPosition"
               required
-              maxLength={50}
+              maxLength={
+                50
+              }
             />
 
             <Field
@@ -345,7 +550,9 @@ export default function ClientKycForm({
             <Field
               label="Owner contact"
               name="ownerContact"
-              maxLength={15}
+              maxLength={
+                15
+              }
             />
           </div>
         </>
@@ -399,7 +606,8 @@ export default function ClientKycForm({
           required
         />
 
-        {clientUsers.length > 0 && (
+        {clientUsers.length >
+          0 && (
           <div className="sm:col-span-2">
             <label className="field-label">
               Link Client Portal account
@@ -413,20 +621,32 @@ export default function ClientKycForm({
                 Create a new Client Portal account
               </option>
 
-              {clientUsers.map((user) => (
-                <option
-                  key={user.userid}
-                  value={user.userid}
-                >
-                  {user.fullname} - {user.email}
-                </option>
-              ))}
+              {clientUsers.map(
+                (
+                  user,
+                ) => (
+                  <option
+                    key={
+                      user.userid
+                    }
+                    value={
+                      user.userid
+                    }
+                  >
+                    {
+                      user.fullname
+                    }{" "}
+                    -{" "}
+                    {
+                      user.email
+                    }
+                  </option>
+                ),
+              )}
             </select>
 
             <p className="mt-1 text-xs text-slate-400">
-              Select an existing Client Portal account
-              only when this client should use that
-              existing login.
+              Select an existing Client Portal account only when this client should use that existing login.
             </p>
           </div>
         )}
@@ -434,7 +654,12 @@ export default function ClientKycForm({
         <Select
           label="Risk category (Staff only)"
           name="risk"
-          values={["", "Low", "Medium", "High"]}
+          values={[
+            "",
+            "Low",
+            "Medium",
+            "High",
+          ]}
         />
       </div>
 
@@ -447,24 +672,34 @@ export default function ClientKycForm({
 
       {error && (
         <p className="field-error mt-3">
-          {error}
+          {
+            error
+          }
         </p>
       )}
 
       {success && (
         <p className="mt-3 text-sm text-green-700">
-          {success}
+          {
+            success
+          }
         </p>
       )}
 
       <button
         type="submit"
-        disabled={saving}
+        disabled={
+          saving
+        }
         className="btn-primary mt-6 w-full"
       >
         {saving
-          ? "Creating client…"
-          : "Create client & KYC record"}
+          ? requiresApproval
+            ? "Submitting…"
+            : "Creating client…"
+          : requiresApproval
+            ? "Submit client onboarding for approval"
+            : "Create client & KYC record"}
       </button>
     </form>
   );

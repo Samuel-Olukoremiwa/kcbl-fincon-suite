@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ROLES = [
-  "Project Manager",
+const TEAM_ROLES = [
   "Senior Supervisor",
   "Junior Supervisor",
   "QS",
@@ -29,16 +28,14 @@ function normalizeIds(value: unknown) {
   );
 }
 
-export async function POST(
-  request: Request,
-) {
+export async function POST(request: Request) {
   const viewer = await getViewer();
 
-  if (viewer.department !== "Operations") {
+  if (viewer.userType !== "Staff") {
     return NextResponse.json(
       {
         error:
-          "Only Operations may initiate a project assignment.",
+          "Only staff may manage project assignments.",
       },
       { status: 403 },
     );
@@ -70,18 +67,63 @@ export async function POST(
   if (
     !projectids.length ||
     !userid ||
-    !ROLES.includes(assignmentrole)
+    !TEAM_ROLES.includes(assignmentrole)
   ) {
     return NextResponse.json(
       {
         error:
-          "Select at least one project, a staff member, and a valid assignment role.",
+          "Select at least one project, a staff member, and a valid project role.",
       },
       { status: 400 },
     );
   }
 
   const admin = createAdminClient();
+
+  /*
+   * ONLY an approved, active Project Manager may initiate
+   * staff assignments, and only for their own project(s).
+   */
+  const {
+    data: managerAssignments,
+    error: managerLookupError,
+  } = await admin
+    .from("projectassignments")
+    .select("projectid")
+    .in("projectid", projectids)
+    .eq("userid", viewer.userId)
+    .eq("assignmentrole", "Project Manager")
+    .eq("approvalstatus", "Approved")
+    .eq("active", true);
+
+  if (managerLookupError) {
+    return NextResponse.json(
+      { error: managerLookupError.message },
+      { status: 400 },
+    );
+  }
+
+  const managedProjectIds = new Set(
+    (managerAssignments ?? []).map(
+      (assignment) => assignment.projectid,
+    ),
+  );
+
+  const unauthorizedProjectIds =
+    projectids.filter(
+      (projectid) =>
+        !managedProjectIds.has(projectid),
+    );
+
+  if (unauthorizedProjectIds.length) {
+    return NextResponse.json(
+      {
+        error:
+          "Only the approved Project Manager may assign staff to a project.",
+      },
+      { status: 403 },
+    );
+  }
 
   const {
     data: staffMember,
@@ -162,7 +204,7 @@ export async function POST(
   } = await admin
     .from("projectassignments")
     .select(
-      "projectid,assignmentid,approvalstatus",
+      "projectid,assignmentid,approvalstatus,active",
     )
     .eq("userid", userid)
     .eq("assignmentrole", assignmentrole)
@@ -197,25 +239,28 @@ export async function POST(
     });
   }
 
-  const { error: insertError } = await admin
-    .from("projectassignments")
-    .insert(
-      newProjectIds.map((projectid) => ({
-        projectid,
-        userid,
-        assignmentrole,
-        assignedbyuserid: viewer.userId,
-        approvalstatus: "Pending",
-        active: false,
-      })),
-    );
+  const { error: insertError } =
+    await admin
+      .from("projectassignments")
+      .insert(
+        newProjectIds.map((projectid) => ({
+          projectid,
+          userid,
+          assignmentrole,
+          assignedbyuserid: viewer.userId,
+          approvalstatus: "Pending",
+          authorizedbyuserid: null,
+          authorizedat: null,
+          active: false,
+        })),
+      );
 
   if (insertError) {
     return NextResponse.json(
       {
         error:
           insertError.code === "23505"
-            ? "One or more of these assignments were created by another request. Refresh and try again."
+            ? "One or more of these assignments already exist. Refresh and try again."
             : insertError.message,
       },
       {
@@ -234,15 +279,12 @@ export async function POST(
   return NextResponse.json(
     {
       ok: true,
-      createdCount:
-        newProjectIds.length,
+      createdCount: newProjectIds.length,
       existingCount,
       message:
         `${newProjectIds.length} project assignment${
-          newProjectIds.length === 1
-            ? ""
-            : "s"
-        } submitted for MD Office authorization.${
+          newProjectIds.length === 1 ? "" : "s"
+        } submitted for MD Office approval.${
           existingCount
             ? ` ${existingCount} selected assignment${
                 existingCount === 1

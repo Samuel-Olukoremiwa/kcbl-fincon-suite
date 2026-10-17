@@ -69,6 +69,8 @@ export default function ClientWorkspace({
   currentUserId,
   clientUsers,
   canCreate,
+  canEdit,
+  requiresApproval,
 }: {
   clients: Client[];
   currentUserId: string;
@@ -78,6 +80,8 @@ export default function ClientWorkspace({
     email: string;
   }[];
   canCreate: boolean;
+  canEdit: boolean;
+  requiresApproval: boolean;
 }) {
   const [
     view,
@@ -171,7 +175,9 @@ export default function ClientWorkspace({
               )
             }
           >
-            Onboard New Client
+            {requiresApproval
+              ? "Submit New Client"
+              : "Onboard New Client"}
           </button>
         )}
       </div>
@@ -188,11 +194,14 @@ export default function ClientWorkspace({
               currentUserId
             }
             existingIds={clients.map(
-              (c) =>
-                c.clientid,
+              (client) =>
+                client.clientid,
             )}
             clientUsers={
               clientUsers
+            }
+            requiresApproval={
+              requiresApproval
             }
           />
         </div>
@@ -206,10 +215,11 @@ export default function ClientWorkspace({
                   query
                 }
                 onChange={(
-                  e,
+                  event,
                 ) =>
                   setQuery(
-                    e.target
+                    event
+                      .target
                       .value,
                   )
                 }
@@ -225,7 +235,9 @@ export default function ClientWorkspace({
                     "Other",
                   ] as const
                 ).map(
-                  (type) => (
+                  (
+                    type,
+                  ) => (
                     <button
                       key={
                         type
@@ -297,23 +309,25 @@ export default function ClientWorkspace({
 
               <tbody className="divide-y divide-slate-100">
                 {rows.map(
-                  (c) => (
+                  (
+                    client,
+                  ) => (
                     <tr
                       key={
-                        c.clientid
+                        client.clientid
                       }
                       className="row-interactive"
                     >
                       <td className="px-4 py-3">
                         <b>
                           {
-                            c.fullnameorcompanyname
+                            client.fullnameorcompanyname
                           }
                         </b>
 
                         <span className="block text-xs text-slate-400">
                           {
-                            c.clientid
+                            client.clientid
                           }
                         </span>
                       </td>
@@ -321,20 +335,20 @@ export default function ClientWorkspace({
                       <td className="px-4 py-3">
                         <span
                           className={clientTypeBadgeClass(
-                            c.clienttype,
+                            client.clienttype,
                           )}
                         >
                           {
-                            c.clienttype
+                            client.clienttype
                           }
                         </span>
 
                         {expiryBadge(
-                          c.idexpirydate,
+                          client.idexpirydate,
                         ) && (
                           <span className="ml-1.5">
                             {expiryBadge(
-                              c.idexpirydate,
+                              client.idexpirydate,
                             )}
                           </span>
                         )}
@@ -342,28 +356,34 @@ export default function ClientWorkspace({
 
                       <td className="px-4 py-3 text-slate-600">
                         {
-                          c.email
+                          client.email
                         }
 
                         <span className="block text-xs">
                           {
-                            c.phonenumber
+                            client.phonenumber
                           }
                         </span>
                       </td>
 
                       <td className="px-4 py-3">
                         {
-                          c.preferredpaymentmethod
+                          client.preferredpaymentmethod
                         }
                       </td>
 
                       <td className="px-4 py-3">
-                        <EditClientRequest
-                          client={
-                            c as any
-                          }
-                        />
+                        {canEdit ? (
+                          <EditClientRequest
+                            client={
+                              client as any
+                            }
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-400">
+                            Read only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ),

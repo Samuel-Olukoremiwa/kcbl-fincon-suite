@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const ROLES = [
-  "Project Manager",
   "Senior Supervisor",
   "Junior Supervisor",
   "QS",
@@ -42,8 +41,10 @@ export default function AssignmentsWorkspace({
     useState("All projects");
   const [staffFilter, setStaffFilter] =
     useState("All staff");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] =
+    useState("");
+  const [toDate, setToDate] =
+    useState("");
 
   const filteredAssignments =
     assignments.filter((assignment) => {
@@ -59,30 +60,28 @@ export default function AssignmentsWorkspace({
         .includes(search.toLowerCase());
 
       const initiated =
-        assignment.assignedat?.slice(
-          0,
-          10,
-        ) ?? "";
+        assignment.assignedat?.slice(0, 10) ?? "";
 
       return (
         matchesSearch &&
-        (statusFilter === "All statuses" ||
-          assignment.approvalstatus ===
-            statusFilter) &&
-        (projectFilter === "All projects" ||
-          assignment.projectid ===
-            projectFilter) &&
-        (staffFilter === "All staff" ||
-          assignment.userid ===
-            staffFilter) &&
+        (
+          statusFilter === "All statuses" ||
+          assignment.approvalstatus === statusFilter
+        ) &&
+        (
+          projectFilter === "All projects" ||
+          assignment.projectid === projectFilter
+        ) &&
+        (
+          staffFilter === "All staff" ||
+          assignment.userid === staffFilter
+        ) &&
         (!fromDate || initiated >= fromDate) &&
         (!toDate || initiated <= toDate)
       );
     });
 
-  function toggleProject(
-    projectid: string,
-  ) {
+  function toggleProject(projectid: string) {
     setSelectedProjectIds((current) =>
       current.includes(projectid)
         ? current.filter(
@@ -97,8 +96,6 @@ export default function AssignmentsWorkspace({
   ) {
     event.preventDefault();
 
-    const form = event.currentTarget;
-
     if (!selectedProjectIds.length) {
       setMessage(
         "Select at least one project.",
@@ -106,6 +103,7 @@ export default function AssignmentsWorkspace({
       return;
     }
 
+    const form = event.currentTarget;
     const data = new FormData(form);
 
     const response = await fetch(
@@ -113,18 +111,13 @@ export default function AssignmentsWorkspace({
       {
         method: "POST",
         headers: {
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          projectids:
-            selectedProjectIds,
-          userid:
-            data.get("userid"),
+          projectids: selectedProjectIds,
+          userid: data.get("userid"),
           assignmentrole:
-            data.get(
-              "assignmentrole",
-            ),
+            data.get("assignmentrole"),
         }),
       },
     );
@@ -134,9 +127,9 @@ export default function AssignmentsWorkspace({
     setMessage(
       response.ok
         ? result.message ??
-          "Assignments submitted for MD Office authorization."
+          "Project assignment submitted for MD Office approval."
         : result.error ??
-          "Could not create the assignments.",
+          "Could not create the assignment.",
     );
 
     if (response.ok) {
@@ -155,8 +148,7 @@ export default function AssignmentsWorkspace({
       {
         method: "PATCH",
         headers: {
-          "Content-Type":
-            "application/json",
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           decision,
@@ -169,7 +161,8 @@ export default function AssignmentsWorkspace({
     setMessage(
       response.ok
         ? `Assignment ${decision.toLowerCase()}.`
-        : result.error,
+        : result.error ??
+          "Could not update the assignment.",
     );
 
     if (response.ok) {
@@ -191,11 +184,11 @@ export default function AssignmentsWorkspace({
           onSubmit={create}
         >
           <h2 className="font-semibold">
-            Assign staff to projects
+            Assign project team
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Select one or more projects. Each project creates its own assignment request and only approved assignments grant access.
+            Only the Project Manager can submit assignments for their project. Every assignment requires MD Office approval before it becomes active.
           </p>
 
           <div className="mt-4">
@@ -212,9 +205,11 @@ export default function AssignmentsWorkspace({
                   <input
                     type="checkbox"
                     className="mt-1"
-                    checked={selectedProjectIds.includes(
-                      project.projectid,
-                    )}
+                    checked={
+                      selectedProjectIds.includes(
+                        project.projectid,
+                      )
+                    }
                     onChange={() =>
                       toggleProject(
                         project.projectid,
@@ -223,23 +218,19 @@ export default function AssignmentsWorkspace({
                   />
 
                   <span className="text-sm">
-                    <b>
-                      {project.projectid}
-                    </b>
+                    <b>{project.projectid}</b>
                     {" · "}
                     {project.projecttitle}
                   </span>
                 </label>
               ))}
-            </div>
 
-            <p className="mt-2 text-xs text-slate-500">
-              {selectedProjectIds.length} project
-              {selectedProjectIds.length === 1
-                ? ""
-                : "s"}{" "}
-              selected
-            </p>
+              {!projects.length && (
+                <p className="text-sm text-slate-500">
+                  You do not have an approved Project Manager assignment.
+                </p>
+              )}
+            </div>
           </div>
 
           <label className="mt-4 block">
@@ -262,8 +253,7 @@ export default function AssignmentsWorkspace({
                   value={user.userid}
                 >
                   {user.fullname} ·{" "}
-                  {user.department ??
-                    "No department"}
+                  {user.department ?? "No department"}
                 </option>
               ))}
             </select>
@@ -280,7 +270,10 @@ export default function AssignmentsWorkspace({
               required
             >
               {ROLES.map((role) => (
-                <option key={role}>
+                <option
+                  key={role}
+                  value={role}
+                >
                   {role}
                 </option>
               ))}
@@ -289,11 +282,9 @@ export default function AssignmentsWorkspace({
 
           <button
             className="btn-primary mt-5 w-full"
-            disabled={
-              !selectedProjectIds.length
-            }
+            disabled={!selectedProjectIds.length}
           >
-            Submit for authorization
+            Submit assignment for approval
           </button>
         </form>
       )}
@@ -305,7 +296,7 @@ export default function AssignmentsWorkspace({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Pending, approved, and rejected assignment requests are retained here.
+            Project Manager submissions remain Pending until MD Office decides them.
           </p>
 
           {message && (
@@ -320,9 +311,7 @@ export default function AssignmentsWorkspace({
             className="field-input"
             value={search}
             onChange={(event) =>
-              setSearch(
-                event.target.value,
-              )
+              setSearch(event.target.value)
             }
             placeholder="Search project, staff, role or authorizer…"
           />
@@ -331,14 +320,10 @@ export default function AssignmentsWorkspace({
             className="field-input"
             value={statusFilter}
             onChange={(event) =>
-              setStatusFilter(
-                event.target.value,
-              )
+              setStatusFilter(event.target.value)
             }
           >
-            <option>
-              All statuses
-            </option>
+            <option>All statuses</option>
             <option>Pending</option>
             <option>Approved</option>
             <option>Rejected</option>
@@ -348,14 +333,10 @@ export default function AssignmentsWorkspace({
             className="field-input"
             value={projectFilter}
             onChange={(event) =>
-              setProjectFilter(
-                event.target.value,
-              )
+              setProjectFilter(event.target.value)
             }
           >
-            <option>
-              All projects
-            </option>
+            <option>All projects</option>
 
             {projects.map((project) => (
               <option
@@ -372,14 +353,10 @@ export default function AssignmentsWorkspace({
             className="field-input"
             value={staffFilter}
             onChange={(event) =>
-              setStaffFilter(
-                event.target.value,
-              )
+              setStaffFilter(event.target.value)
             }
           >
-            <option>
-              All staff
-            </option>
+            <option>All staff</option>
 
             {staff.map((person) => (
               <option
@@ -393,7 +370,7 @@ export default function AssignmentsWorkspace({
 
           <label>
             <span className="field-label">
-              Initiated from
+              Assigned from
             </span>
 
             <input
@@ -401,16 +378,14 @@ export default function AssignmentsWorkspace({
               type="date"
               value={fromDate}
               onChange={(event) =>
-                setFromDate(
-                  event.target.value,
-                )
+                setFromDate(event.target.value)
               }
             />
           </label>
 
           <label>
             <span className="field-label">
-              Initiated to
+              Assigned to
             </span>
 
             <input
@@ -418,9 +393,7 @@ export default function AssignmentsWorkspace({
               type="date"
               value={toDate}
               onChange={(event) =>
-                setToDate(
-                  event.target.value,
-                )
+                setToDate(event.target.value)
               }
             />
           </label>
@@ -443,63 +416,50 @@ export default function AssignmentsWorkspace({
                   Status
                 </th>
                 <th className="px-4 py-3">
-                  Request history
+                  Assignment history
                 </th>
-                {canApprove && (
-                  <th className="px-4 py-3">
-                    Action
-                  </th>
-                )}
+                <th className="px-4 py-3">
+                  Action
+                </th>
               </tr>
             </thead>
 
             <tbody className="divide-y">
               {filteredAssignments.map(
                 (assignment) => (
-                  <tr
-                    key={
-                      assignment.assignmentid
-                    }
-                  >
+                  <tr key={assignment.assignmentid}>
                     <td className="px-4 py-3">
-                      <b>
-                        {assignment.projectid}
-                      </b>
-
+                      <b>{assignment.projectid}</b>
                       <span className="block text-xs text-slate-400">
-                        {
-                          assignment.projects
-                            ?.projecttitle
-                        }
+                        {assignment.projects?.projecttitle}
                       </span>
                     </td>
 
                     <td className="px-4 py-3">
-                      {
-                        assignment.users
-                          ?.fullname
-                      }
+                      {assignment.users?.fullname}
                     </td>
 
                     <td className="px-4 py-3">
-                      {
-                        assignment.assignmentrole
-                      }
+                      {assignment.assignmentrole}
                     </td>
 
                     <td className="px-4 py-3 font-medium">
-                      {
-                        assignment.approvalstatus
-                      }
+                      {assignment.approvalstatus}
+
+                      {assignment.active &&
+                        assignment.approvalstatus ===
+                          "Approved" && (
+                          <span className="ml-2 text-xs text-emerald-600">
+                            Active
+                          </span>
+                        )}
                     </td>
 
                     <td className="px-4 py-3 text-xs text-slate-500">
-                      Initiated{" "}
+                      Assigned{" "}
                       {new Date(
                         assignment.assignedat,
-                      ).toLocaleString(
-                        "en-NG",
-                      )}
+                      ).toLocaleString("en-NG")}
 
                       <span className="mt-1 block">
                         {assignment.authorizedat
@@ -508,47 +468,48 @@ export default function AssignmentsWorkspace({
                               "MD Office"
                             } · ${new Date(
                               assignment.authorizedat,
-                            ).toLocaleString(
-                              "en-NG",
-                            )}`
-                          : "Awaiting MD Office authorization"}
+                            ).toLocaleString("en-NG")}`
+                          : "Awaiting MD Office review"}
                       </span>
                     </td>
 
-                    {canApprove && (
-                      <td className="px-4 py-3">
-                        {assignment.approvalstatus ===
-                          "Pending" && (
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              className="btn-primary"
-                              onClick={() =>
-                                decide(
-                                  assignment.assignmentid,
-                                  "Approved",
-                                )
-                              }
-                            >
-                              Approve
-                            </button>
+                    <td className="px-4 py-3">
+                      {canApprove &&
+                      assignment.approvalstatus ===
+                        "Pending" ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={() =>
+                              decide(
+                                assignment.assignmentid,
+                                "Approved",
+                              )
+                            }
+                          >
+                            Approve
+                          </button>
 
-                            <button
-                              type="button"
-                              className="btn-secondary"
-                              onClick={() =>
-                                decide(
-                                  assignment.assignmentid,
-                                  "Rejected",
-                                )
-                              }
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    )}
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() =>
+                              decide(
+                                assignment.assignmentid,
+                                "Rejected",
+                              )
+                            }
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          —
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ),
               )}
@@ -556,9 +517,7 @@ export default function AssignmentsWorkspace({
               {!filteredAssignments.length && (
                 <tr>
                   <td
-                    colSpan={
-                      canApprove ? 6 : 5
-                    }
+                    colSpan={6}
                     className="px-4 py-10 text-center text-slate-400"
                   >
                     No assignments match the selected filters.

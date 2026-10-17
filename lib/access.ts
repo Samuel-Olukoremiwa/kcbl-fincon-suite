@@ -15,12 +15,27 @@ export type ModuleKey =
   | "reports"
   | "assignments";
 
-type Rule = { modules: ModuleKey[]; write: ModuleKey[] };
+type Rule = {
+  modules: ModuleKey[];
+  write: ModuleKey[];
+};
 
-// Department controls which parts of the system a staff member can access.
-// Role controls workflow actions inside those modules (Initiator vs
-// Authorizer). Access level is derived automatically and is not selected by
-// the user.
+const allModules: ModuleKey[] = [
+  "dashboard",
+  "users",
+  "clients",
+  "projects",
+  "suppliers",
+  "subcontractors",
+  "transactions",
+  "audit",
+  "maintenance",
+  "settings",
+  "editRequests",
+  "reports",
+  "assignments",
+];
+
 const departmentMatrix: Record<string, Rule> = {
   MD: {
     modules: [
@@ -31,8 +46,10 @@ const departmentMatrix: Record<string, Rule> = {
       "subcontractors",
       "transactions",
       "audit",
+      "reports",
+      "assignments",
     ],
-    write: [],
+    write: ["assignments"],
   },
 
   "MD Office": {
@@ -50,6 +67,7 @@ const departmentMatrix: Record<string, Rule> = {
       "assignments",
     ],
     write: [
+      "users",
       "clients",
       "projects",
       "suppliers",
@@ -61,12 +79,15 @@ const departmentMatrix: Record<string, Rule> = {
   },
 
   "Executive Director": {
-    modules: ["dashboard", "audit"],
+    modules: allModules,
     write: [],
   },
 
   "Non-Executive Director": {
-    modules: ["dashboard"],
+    modules: [
+      "dashboard",
+      "projects",
+    ],
     write: [],
   },
 
@@ -86,15 +107,18 @@ const departmentMatrix: Record<string, Rule> = {
     ],
   },
 
+  /*
+   * Business Development deliberately has NO Users & Staff Database access.
+   * Client maker-checker actions are role-specific and enforced by the
+   * helper functions below.
+   */
   "Business Development": {
     modules: [
-      "users",
       "clients",
       "projects",
       "editRequests",
     ],
     write: [
-      "users",
       "clients",
       "projects",
       "editRequests",
@@ -128,21 +152,7 @@ const departmentMatrix: Record<string, Rule> = {
 };
 
 const superUserRule: Rule = {
-  modules: [
-    "dashboard",
-    "users",
-    "clients",
-    "projects",
-    "suppliers",
-    "subcontractors",
-    "transactions",
-    "audit",
-    "maintenance",
-    "settings",
-    "editRequests",
-    "reports",
-    "assignments",
-  ],
+  modules: allModules,
 
   write: [
     "users",
@@ -154,6 +164,7 @@ const superUserRule: Rule = {
     "maintenance",
     "settings",
     "editRequests",
+    "reports",
     "assignments",
   ],
 };
@@ -171,35 +182,36 @@ export function canAccess(
   module: ModuleKey,
   write = false,
 ) {
-  if (viewer.roleName === "Super User") {
-    const rule = superUserRule;
-
+  if (
+    viewer.roleName ===
+    "Super User"
+  ) {
     return (
       write
-        ? rule.write
-        : rule.modules
+        ? superUserRule.write
+        : superUserRule.modules
     ).includes(module);
   }
 
-  if (viewer.userType === "Client") {
-    const rule = clientRule;
-
+  if (
+    viewer.userType ===
+    "Client"
+  ) {
     return (
       write
-        ? rule.write
-        : rule.modules
+        ? clientRule.write
+        : clientRule.modules
     ).includes(module);
   }
 
-  // Department is the source of module scope.
-  // Role does not independently grant access to
-  // another department's modules.
   const matrixLabel =
     viewer.department ||
     viewer.roleName;
 
-  const rule: Rule =
-    departmentMatrix[matrixLabel] ?? {
+  const rule =
+    departmentMatrix[
+      matrixLabel
+    ] ?? {
       modules: [],
       write: [],
     };
@@ -211,60 +223,151 @@ export function canAccess(
   ).includes(module);
 }
 
-// Progress Reports are deliberately narrower than
-// ordinary MD Office access.
-//
-// Only an MD Office Authorizer may perform final
-// authorization.
-//
-// "MD Office" remains temporarily accepted as a
-// legacy role for existing accounts.
-export function canManageProjectReports(
+/*
+ * ============================================================
+ * CLIENT ONBOARDING MAKER-CHECKER
+ * ============================================================
+ *
+ * Business Development Initiator:
+ * - may submit a new client onboarding request
+ * - may submit client update requests
+ *
+ * Business Development Authorizer:
+ * - may review/approve/reject onboarding requests
+ * - may review/approve/reject client update requests
+ * - may NOT create/onboard a client
+ * - may NOT submit client updates
+ *
+ * Super User remains an administrative override.
+ * MD Office retains its existing direct-create capability.
+ */
+
+export function canSubmitClientOnboarding(
   viewer: Viewer,
 ) {
   return (
-    viewer.userType === "Staff" &&
-    viewer.department === "MD Office" &&
-    [
-      "Authorizer",
-      "MD Office",
-    ].includes(viewer.roleName)
+    viewer.userType ===
+      "Staff" &&
+    viewer.department ===
+      "Business Development" &&
+    viewer.roleName ===
+      "Initiator"
   );
 }
 
-// Operations remains department-driven for the
-// current Progress Report workflow.
-export function canSubmitProgressReports(
+export function canReviewClientOnboarding(
   viewer: Viewer,
 ) {
   return (
-    viewer.userType === "Staff" &&
-    viewer.department === "Operations"
-  );
-}
-
-export function canCreateClientOrProject(
-  viewer: Viewer,
-) {
-  return (
-    viewer.userType === "Staff" &&
+    viewer.userType ===
+      "Staff" &&
     (
-      viewer.roleName === "Super User" ||
-      [
-        "Business Development",
-        "MD Office",
-      ].includes(
-        viewer.department ?? "",
+      viewer.roleName ===
+        "Super User" ||
+      (
+        viewer.department ===
+          "Business Development" &&
+        viewer.roleName ===
+          "Authorizer"
       )
     )
   );
 }
 
-// MD Office and Audit/Internal Control may view
-// financial details.
-//
-// Operations and Business Development do not have
-// financial-record visibility.
+export function canDirectCreateClient(
+  viewer: Viewer,
+) {
+  return (
+    viewer.userType ===
+      "Staff" &&
+    (
+      viewer.roleName ===
+        "Super User" ||
+      viewer.department ===
+        "MD Office"
+    )
+  );
+}
+
+export function canSubmitClientEditRequest(
+  viewer: Viewer,
+) {
+  if (
+    viewer.roleName ===
+    "Super User"
+  ) {
+    return true;
+  }
+
+  if (
+    viewer.department ===
+    "Business Development"
+  ) {
+    return (
+      viewer.roleName ===
+      "Initiator"
+    );
+  }
+
+  return canAccess(
+    viewer,
+    "clients",
+    true,
+  );
+}
+
+/*
+ * Projects retain the existing creation scope.
+ * This helper is now used for project creation only.
+ */
+export function canCreateClientOrProject(
+  viewer: Viewer,
+) {
+  return (
+    viewer.userType ===
+      "Staff" &&
+    (
+      viewer.roleName ===
+        "Super User" ||
+      [
+        "Business Development",
+        "MD Office",
+      ].includes(
+        viewer.department ??
+          "",
+      )
+    )
+  );
+}
+
+export function canManageProjectReports(
+  viewer: Viewer,
+) {
+  return (
+    viewer.userType ===
+      "Staff" &&
+    viewer.department ===
+      "MD Office" &&
+    [
+      "Authorizer",
+      "MD Office",
+    ].includes(
+      viewer.roleName,
+    )
+  );
+}
+
+export function canSubmitProgressReports(
+  viewer: Viewer,
+) {
+  return (
+    viewer.userType ===
+      "Staff" &&
+    viewer.department ===
+      "Operations"
+  );
+}
+
 export function canViewFinancialRecords(
   viewer: Viewer,
 ) {
@@ -272,7 +375,8 @@ export function canViewFinancialRecords(
     "Operations",
     "Business Development",
   ].includes(
-    viewer.department ?? "",
+    viewer.department ??
+      "",
   );
 }
 
@@ -288,40 +392,32 @@ const editRequestModuleByEntity:
   > = {
     client: "clients",
     supplier: "suppliers",
-    subcontractor: "subcontractors",
+    subcontractor:
+      "subcontractors",
   };
 
-/**
- * A staff member may submit an update request only
- * for a record type their department is permitted
- * to maintain.
- */
 export function canSubmitEditRequest(
   viewer: Viewer,
   entityType: EditRequestEntityType,
 ) {
+  if (
+    entityType ===
+    "client"
+  ) {
+    return canSubmitClientEditRequest(
+      viewer,
+    );
+  }
+
   return canAccess(
     viewer,
-    editRequestModuleByEntity[entityType],
+    editRequestModuleByEntity[
+      entityType
+    ],
     true,
   );
 }
 
-/**
- * Update-request approval is entity-aware rather
- * than giving every Authorizer authority over
- * every type of record.
- *
- * Client updates:
- * - Business Development Authorizer
- * - MD Office Authorizer
- * - Super User
- *
- * Supplier/Subcontractor updates:
- * - Finance & Admin Authorizer
- * - MD Office Authorizer
- * - Super User
- */
 export function canDecideEditRequest(
   viewer: Viewer,
   entityType: EditRequestEntityType,
@@ -348,7 +444,8 @@ export function canDecideEditRequest(
       "Business Development",
       "MD Office",
     ].includes(
-      viewer.department ?? "",
+      viewer.department ??
+        "",
     );
   }
 
@@ -356,6 +453,7 @@ export function canDecideEditRequest(
     "Finance & Admin",
     "MD Office",
   ].includes(
-    viewer.department ?? "",
+    viewer.department ??
+      "",
   );
 }

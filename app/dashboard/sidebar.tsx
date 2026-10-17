@@ -4,40 +4,90 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
-  Menu, X, LayoutDashboard, Users, FileCheck2, Banknote, FileText,
-  Building2, BriefcaseBusiness, Landmark, Settings, ClipboardEdit, Wrench, ContactRound,
+  Menu,
+  X,
+  LayoutDashboard,
+  Users,
+  FileCheck2,
+  Banknote,
+  FileText,
+  Building2,
+  BriefcaseBusiness,
+  Landmark,
+  Settings,
+  ClipboardEdit,
+  Wrench,
+  ContactRound,
 } from "lucide-react";
 import { useState } from "react";
-import { canAccess, type ModuleKey } from "@/lib/access";
+import {
+  canAccess,
+  type ModuleKey,
+} from "@/lib/access";
 import type { Viewer } from "@/lib/viewer";
 
-type NavItem = { href: string; label: string; icon: React.ElementType };
-type SidebarViewer = Pick<Viewer, "roleName" | "userType" | "department" | "accessLevel">;
-type NavGroup = { label: string; items: (NavItem & { module: ModuleKey })[] };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+};
+
+type SidebarViewer = Pick<
+  Viewer,
+  "roleName" | "userType" | "department" | "accessLevel"
+> & {
+  hasProjectManagerAccess?: boolean;
+  hasProjectReportAccess?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  items: (NavItem & { module: ModuleKey })[];
+};
 
 export default function Sidebar({
-  roleName, userType, department, accessLevel,
+  roleName,
+  userType,
+  department,
+  accessLevel,
+  hasProjectManagerAccess = false,
+  hasProjectReportAccess = false,
 }: SidebarViewer) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const isClient = userType === "Client";
 
   const viewer: Viewer = {
-    userId: "", authUserId: "", fullName: "",
-    roleName, userType, department, accessLevel,
+    userId: "",
+    authUserId: "",
+    fullName: "",
+    roleName,
+    userType,
+    department,
+    accessLevel,
   };
 
   const clientGroups: NavGroup[] = [
     {
       label: "Overview",
       items: [
-        { href: "/dashboard/portal", label: "My Project Portal", icon: LayoutDashboard, module: "dashboard" },
+        {
+          href: "/dashboard/portal",
+          label: "My Project Portal",
+          icon: LayoutDashboard,
+          module: "dashboard",
+        },
       ],
     },
     {
       label: "Reports",
       items: [
-        { href: "/dashboard/reports", label: "Progress Reports", icon: FileText, module: "reports" },
+        {
+          href: "/dashboard/reports",
+          label: "Progress Reports",
+          icon: FileText,
+          module: "reports",
+        },
       ],
     },
   ];
@@ -46,37 +96,120 @@ export default function Sidebar({
     {
       label: "Overview",
       items: [
-        { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
+        {
+          href: "/dashboard",
+          label: "Dashboard",
+          icon: LayoutDashboard,
+          module: "dashboard",
+        },
       ],
     },
     {
       label: "Operations",
       items: [
-        { href: "/dashboard/clients", label: "Clients & KYC", icon: FileCheck2, module: "clients" },
-        { href: "/dashboard/projects", label: "Projects", icon: Building2, module: "projects" },
-        { href: "/dashboard/directory", label: "Clients & Projects", icon: ContactRound, module: "projects" },
-        { href: "/dashboard/partners", label: "Suppliers & Subcontractors", icon: BriefcaseBusiness, module: "suppliers" },
-        { href: "/dashboard/transactions", label: "Transactions", icon: Banknote, module: "transactions" },
-        { href: "/dashboard/reports", label: "Progress Reports", icon: FileText, module: "reports" },
-        { href: "/dashboard/assignments", label: "Project Assignments", icon: ContactRound, module: "assignments" },
+        {
+          href: "/dashboard/clients",
+          label: "Clients & KYC",
+          icon: FileCheck2,
+          module: "clients",
+        },
+        {
+          href: "/dashboard/projects",
+          label: "Projects",
+          icon: Building2,
+          module: "projects",
+        },
+        {
+          href: "/dashboard/directory",
+          label: "Clients & Projects",
+          icon: ContactRound,
+          module: "projects",
+        },
+        {
+          href: "/dashboard/partners",
+          label: "Suppliers & Subcontractors",
+          icon: BriefcaseBusiness,
+          module: "suppliers",
+        },
+        {
+          href: "/dashboard/transactions",
+          label: "Transactions",
+          icon: Banknote,
+          module: "transactions",
+        },
+        {
+          href: "/dashboard/reports",
+          label: "Progress Reports",
+          icon: FileText,
+          module: "reports",
+        },
+        {
+          href: "/dashboard/assignments",
+          label: "Project Assignments",
+          icon: ContactRound,
+          module: "assignments",
+        },
       ],
     },
     {
       label: "Admin",
       items: [
-        { href: "/dashboard/users", label: "Users & Staff Database", icon: Users, module: "users" },
-        { href: "/dashboard/audit", label: "Audit Trail", icon: Landmark, module: "audit" },
-        { href: "/dashboard/maintenance", label: "Master Data", icon: Wrench, module: "maintenance" },
-        { href: "/dashboard/edit-requests", label: "Update Requests", icon: ClipboardEdit, module: "editRequests" },
-        { href: "/dashboard/settings", label: "Security Settings", icon: Settings, module: "settings" },
+        {
+          href: "/dashboard/users",
+          label: "Users & Staff Database",
+          icon: Users,
+          module: "users",
+        },
+        {
+          href: "/dashboard/audit",
+          label: "Audit Trail",
+          icon: Landmark,
+          module: "audit",
+        },
+        {
+          href: "/dashboard/maintenance",
+          label: "Master Data",
+          icon: Wrench,
+          module: "maintenance",
+        },
+        {
+          href: "/dashboard/edit-requests",
+          label: "Update Requests",
+          icon: ClipboardEdit,
+          module: "editRequests",
+        },
+        {
+          href: "/dashboard/settings",
+          label: "Security Settings",
+          icon: Settings,
+          module: "settings",
+        },
       ],
     },
   ];
 
+  function itemAllowed(item: NavItem & { module: ModuleKey }) {
+    if (
+      item.module === "assignments" &&
+      hasProjectManagerAccess
+    ) {
+      return true;
+    }
+
+    if (
+      item.module === "reports" &&
+      hasProjectReportAccess
+    ) {
+      return true;
+    }
+
+    return canAccess(viewer, item.module);
+  }
+
   const groups = (isClient ? clientGroups : staffGroups)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => canAccess(viewer, item.module)),
+      items: group.items.filter(itemAllowed),
     }))
     .filter((group) => group.items.length > 0);
 
@@ -90,6 +223,7 @@ export default function Sidebar({
       >
         <Menu size={20} />
       </button>
+
       {open && (
         <button
           type="button"
@@ -98,6 +232,7 @@ export default function Sidebar({
           className="fixed inset-0 z-30 bg-slate-950/40 md:hidden"
         />
       )}
+
       <aside
         className={
           (open ? "translate-x-0 " : "-translate-x-full ") +
@@ -105,12 +240,29 @@ export default function Sidebar({
         }
       >
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
-          <Image src="/kcbl-mark.png" alt="" width={30} height={30} />
+          <Image
+            src="/kcbl-mark.png"
+            alt=""
+            width={30}
+            height={30}
+          />
+
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">KCBL</p>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-amber">FinCon Suite</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+              KCBL
+            </p>
+
+            <p className="text-[11px] uppercase tracking-[0.18em] text-amber">
+              FinCon Suite
+            </p>
           </div>
-          <button type="button" onClick={() => setOpen(false)} className="ml-auto text-white/60 md:hidden" aria-label="Close navigation">
+
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="ml-auto text-white/60 md:hidden"
+            aria-label="Close navigation"
+          >
             <X size={20} />
           </button>
         </div>
@@ -118,10 +270,14 @@ export default function Sidebar({
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {groups.map((group) => (
             <div key={group.label}>
-              <p className="nav-group-label">{group.label}</p>
+              <p className="nav-group-label">
+                {group.label}
+              </p>
+
               {group.items.map((item) => {
                 const active = pathname === item.href;
                 const Icon = item.icon;
+
                 return (
                   <Link
                     key={item.href}
@@ -134,7 +290,12 @@ export default function Sidebar({
                         : "border-transparent text-white/70 hover:bg-white/5 hover:text-white")
                     }
                   >
-                    <Icon size={18} strokeWidth={1.75} className={active ? "text-amber" : ""} />
+                    <Icon
+                      size={18}
+                      strokeWidth={1.75}
+                      className={active ? "text-amber" : ""}
+                    />
+
                     {item.label}
                   </Link>
                 );
@@ -144,7 +305,10 @@ export default function Sidebar({
         </nav>
 
         <div className="border-t border-white/10 px-5 py-4">
-          <p className="text-xs font-medium text-white/80">{roleName}</p>
+          <p className="text-xs font-medium text-white/80">
+            {roleName}
+          </p>
+
           <p className="text-[11px] leading-relaxed text-white/40">
             Project Financial Control &amp; Performance Management
           </p>
