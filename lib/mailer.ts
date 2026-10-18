@@ -1,3 +1,4 @@
+
 import { Resend } from "resend";
 
 function getMailer() {
@@ -13,6 +14,28 @@ function getMailer() {
     fromEmail,
   };
 }
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/*
+ * =========================================================
+ * PROJECT REPORT EMAIL
+ * =========================================================
+ *
+ * Adds a secure login link to project-report
+ * notifications while preserving the original
+ * email content.
+ *
+ * The login link does not provide direct access
+ * to reports without authentication.
+ */
 
 export async function sendProjectReportEmail({
   to,
@@ -33,12 +56,80 @@ export async function sendProjectReportEmail({
     };
   }
 
+  const loginUrl = "https://kcblfincon.com/login";
+
+  const safeLoginUrl = escapeHtml(loginUrl);
+
+  const loginSection = `
+    <div
+      style="
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #1e293b;
+        padding: 16px 0 24px;
+      "
+    >
+      <p>
+        To access your project report, please log in
+        to KCBL FinCon Suite using your registered
+        account.
+      </p>
+
+      <p style="margin: 24px 0;">
+        <a
+          href="${safeLoginUrl}"
+          style="
+            display: inline-block;
+            background-color: #123c70;
+            color: #ffffff;
+            padding: 14px 24px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+          "
+        >
+          Log in to View Project Report
+        </a>
+      </p>
+
+      <p
+        style="
+          font-size: 12px;
+          color: #64748b;
+        "
+      >
+        If the button does not work, copy and paste
+        this link into your browser:
+      </p>
+
+      <p>
+        <a
+          href="${safeLoginUrl}"
+          style="color: #123c70;"
+        >
+          ${safeLoginUrl}
+        </a>
+      </p>
+
+      <p
+        style="
+          font-size: 12px;
+          color: #64748b;
+        "
+      >
+        For security, you must sign in before
+        accessing any project reports.
+      </p>
+    </div>
+  `;
+
   try {
     const { error } = await mailer.resend.emails.send({
       from: mailer.fromEmail,
       to,
       subject,
-      html,
+      html: html + loginSection,
     });
 
     if (error) {
@@ -63,6 +154,12 @@ export async function sendProjectReportEmail({
     };
   }
 }
+
+/*
+ * =========================================================
+ * CLIENT WELCOME EMAIL
+ * =========================================================
+ */
 
 export async function sendClientWelcomeEmail({
   to,
@@ -92,6 +189,7 @@ export async function sendClientWelcomeEmail({
   const safeName = escapeHtml(clientName);
   const safeEmail = escapeHtml(email);
   const safePortalUrl = escapeHtml(portalUrl);
+
   const safeTemporaryPassword = temporaryPassword
     ? escapeHtml(temporaryPassword)
     : null;
@@ -100,8 +198,9 @@ export async function sendClientWelcomeEmail({
     isNewPortalAccount && safeTemporaryPassword
       ? `
         <p>
-          Your Client Portal account has been created. Use the temporary
-          password below for your first sign-in.
+          Your Client Portal account has been created.
+          Use the temporary password below for your
+          first sign-in.
         </p>
 
         <div
@@ -125,15 +224,16 @@ export async function sendClientWelcomeEmail({
         </div>
 
         <p>
-          You will be required to create your own password immediately
-          after your first successful sign-in before you can access the
-          Client Portal.
+          You will be required to create your own
+          password immediately after your first
+          successful sign-in before you can access
+          the Client Portal.
         </p>
       `
       : `
         <p>
-          This client record has been linked to your existing Client Portal
-          account.
+          This client record has been linked to your
+          existing Client Portal account.
         </p>
 
         <div
@@ -152,8 +252,9 @@ export async function sendClientWelcomeEmail({
         </div>
 
         <p>
-          Continue using your existing password. If you have forgotten it,
-          use the Forgot Password option on the sign-in page.
+          Continue using your existing password.
+          If you have forgotten it, use the
+          Forgot Password option on the sign-in page.
         </p>
       `;
 
@@ -161,7 +262,8 @@ export async function sendClientWelcomeEmail({
     const { error } = await mailer.resend.emails.send({
       from: mailer.fromEmail,
       to,
-      subject: "Your KCBL FinCon Suite Client Portal account",
+      subject:
+        "Your KCBL FinCon Suite Client Portal account",
       html: `
         <div
           style="
@@ -178,7 +280,9 @@ export async function sendClientWelcomeEmail({
 
           ${accountInstructions}
 
-          <p>You can access the Client Portal here:</p>
+          <p>
+            You can access the Client Portal here:
+          </p>
 
           <p>
             <a
@@ -198,8 +302,9 @@ export async function sendClientWelcomeEmail({
           </p>
 
           <p>
-            Please keep your login information private and do not share
-            your password with anyone.
+            Please keep your login information
+            private and do not share your password
+            with anyone.
           </p>
 
           <p>
@@ -211,7 +316,10 @@ export async function sendClientWelcomeEmail({
     });
 
     if (error) {
-      console.error("Client welcome email error:", error);
+      console.error(
+        "Client welcome email error:",
+        error,
+      );
 
       return {
         sent: false,
@@ -221,7 +329,10 @@ export async function sendClientWelcomeEmail({
 
     return { sent: true };
   } catch (error) {
-    console.error("Unexpected client welcome email error:", error);
+    console.error(
+      "Unexpected client welcome email error:",
+      error,
+    );
 
     return {
       sent: false,
@@ -232,6 +343,12 @@ export async function sendClientWelcomeEmail({
     };
   }
 }
+
+/*
+ * =========================================================
+ * STAFF WELCOME EMAIL
+ * =========================================================
+ */
 
 export async function sendStaffWelcomeEmail({
   to,
@@ -258,14 +375,16 @@ export async function sendStaffWelcomeEmail({
 
   const safeName = escapeHtml(staffName);
   const safeEmail = escapeHtml(email);
-  const safeTemporaryPassword = escapeHtml(temporaryPassword);
+  const safeTemporaryPassword =
+    escapeHtml(temporaryPassword);
   const safePortalUrl = escapeHtml(portalUrl);
 
   try {
     const { error } = await mailer.resend.emails.send({
       from: mailer.fromEmail,
       to,
-      subject: "Your KCBL FinCon Suite staff account",
+      subject:
+        "Your KCBL FinCon Suite staff account",
       html: `
         <div
           style="
@@ -281,8 +400,9 @@ export async function sendStaffWelcomeEmail({
           <p>Hello ${safeName},</p>
 
           <p>
-            Your FinCon Suite staff account has been created and is
-            awaiting final account approval.
+            Your FinCon Suite staff account has
+            been created and is awaiting final
+            account approval.
           </p>
 
           <div
@@ -306,10 +426,12 @@ export async function sendStaffWelcomeEmail({
           </div>
 
           <p>
-            Once your account has been approved, sign in using the
-            temporary password above. You will be required to create your
-            own password immediately after your first successful sign-in
-            before you can access the system.
+            Once your account has been approved,
+            sign in using the temporary password
+            above. You will be required to create
+            your own password immediately after
+            your first successful sign-in before
+            you can access the system.
           </p>
 
           <p>
@@ -330,8 +452,9 @@ export async function sendStaffWelcomeEmail({
           </p>
 
           <p>
-            Please keep your login information private and do not share
-            your password with anyone.
+            Please keep your login information
+            private and do not share your password
+            with anyone.
           </p>
 
           <p>
@@ -343,7 +466,10 @@ export async function sendStaffWelcomeEmail({
     });
 
     if (error) {
-      console.error("Staff welcome email error:", error);
+      console.error(
+        "Staff welcome email error:",
+        error,
+      );
 
       return {
         sent: false,
@@ -353,7 +479,10 @@ export async function sendStaffWelcomeEmail({
 
     return { sent: true };
   } catch (error) {
-    console.error("Unexpected staff welcome email error:", error);
+    console.error(
+      "Unexpected staff welcome email error:",
+      error,
+    );
 
     return {
       sent: false,
@@ -363,13 +492,4 @@ export async function sendStaffWelcomeEmail({
           : "Unknown email error.",
     };
   }
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
