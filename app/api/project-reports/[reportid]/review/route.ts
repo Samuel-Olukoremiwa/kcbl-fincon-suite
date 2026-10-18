@@ -79,6 +79,7 @@ export async function PATCH(
         reporttype,
         reviewstatus,
         reportweek,
+        reportdate,
         uploadedbyuserid,
         filename
       `,
@@ -303,8 +304,8 @@ export async function PATCH(
           <p>
             Your Operations Report for
             <strong>${projectTitle}</strong>
-            for the week of
-            <strong>${report.reportweek}</strong>
+            for the date
+            <strong>${report.reportdate ?? report.reportweek}</strong>
             was rejected by the Project Manager.
           </p>
 

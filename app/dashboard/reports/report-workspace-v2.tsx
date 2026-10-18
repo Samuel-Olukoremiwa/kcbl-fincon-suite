@@ -39,6 +39,7 @@ type Report = {
   reportid: number;
   projectid: string;
   reportweek: string;
+  reportdate?: string | null;
   reporttype:
     | "Operations"
     | "Project Manager";
@@ -440,6 +441,8 @@ export default function ReportWorkspace({
   ] = useState(
     currentWeekStart(),
   );
+
+  const [reportDate, setReportDate] = useState(localDateValue(new Date()));
 
   const [
     file,
@@ -916,6 +919,11 @@ export default function ReportWorkspace({
       return;
     }
 
+    if (!selectedIsManager && !/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
+      setMessage("Select a valid daily reporting date.");
+      return;
+    }
+
     setBusy(true);
 
     let reportSaved =
@@ -926,7 +934,8 @@ export default function ReportWorkspace({
         projectid:
           projectId,
         reportweek:
-          reportWeek,
+          selectedIsManager ? reportWeek : mondayFor(reportDate),
+        reportdate: selectedIsManager ? null : reportDate,
         filename:
           file.name,
         filesize:
@@ -1449,7 +1458,7 @@ export default function ReportWorkspace({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Up to 8 PDFs per report (one primary and seven supporting), maximum 100 MB each. Supporting images: JPG/PNG/WebP up to 5 MB each. Videos: MP4/WebM up to 25 MB each. Maximum 6 media files and 50 MB combined per report.
+            Project Managers submit weekly reports; all other assigned team members (including QS) submit daily reports. PDF maximum 100 MB. Supporting images: JPG/PNG/WebP up to 5 MB each. Videos: MP4/WebM up to 25 MB each. Maximum 6 media files and 50 MB combined per report.
           </p>
 
           <p className="mt-1 text-sm text-slate-500">
@@ -1516,7 +1525,7 @@ export default function ReportWorkspace({
               </select>
             </label>
 
-            <label>
+            {selectedIsManager ? <label>
               <span className="field-label">
                 Reporting week
               </span>
@@ -1543,7 +1552,10 @@ export default function ReportWorkspace({
                 }
                 required
               />
-            </label>
+            </label> : <label>
+              <span className="field-label">Reporting date (DD/MM/YYYY)</span>
+              <input className="field-input" type="date" value={reportDate} max={localDateValue(new Date())} onChange={(event) => setReportDate(event.target.value)} required />
+            </label>}
 
             {selectedIsManager && (
               <label>
@@ -2046,9 +2058,7 @@ export default function ReportWorkspace({
 
                               <p className="mt-1 text-sm text-slate-500">
                                 Week of{" "}
-                                {weekLabel(
-                                  report.reportweek,
-                                )}{" "}
+                                {report.reportdate ? new Date(`${report.reportdate}T12:00:00`).toLocaleDateString("en-GB") : weekLabel(report.reportweek)}{" "}
                                 ·{" "}
                                 {sizeLabel(
                                   Number(

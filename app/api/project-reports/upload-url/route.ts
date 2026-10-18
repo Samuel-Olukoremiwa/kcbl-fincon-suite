@@ -6,6 +6,8 @@ import {
   REPORT_BUCKET,
   reportTypeForAssignmentRole,
   validReportWeek,
+  validReportDate,
+  weekStartForDate,
 } from "@/lib/project-reports";
 
 export async function POST(
@@ -29,6 +31,7 @@ export async function POST(
   const {
     projectid,
     reportweek,
+    reportdate,
     filename,
     filesize,
     mimetype,
@@ -36,9 +39,6 @@ export async function POST(
 
   if (
     !projectid ||
-    !validReportWeek(
-      reportweek,
-    ) ||
     typeof filename !==
       "string" ||
     !filename
@@ -136,6 +136,11 @@ export async function POST(
         item.assignmentrole ===
         "Project Manager",
     ) ?? assignments[0];
+
+  const isManager = assignment.assignmentrole === "Project Manager";
+  if (isManager ? !validReportWeek(reportweek) : !validReportDate(reportdate) || reportweek !== weekStartForDate(reportdate)) {
+    return NextResponse.json({ error: "Select a valid reporting week (Project Manager) or daily reporting date (Operations)." }, { status: 400 });
+  }
 
   const safeName =
     filename.replace(

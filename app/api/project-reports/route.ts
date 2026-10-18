@@ -144,6 +144,7 @@ export async function GET() {
         reportid,
         projectid,
         reportweek,
+        reportdate,
         reporttype,
         filename,
         filesize,

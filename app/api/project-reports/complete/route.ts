@@ -6,6 +6,8 @@ import {
   REPORT_BUCKET,
   reportTypeForAssignmentRole,
   validReportWeek,
+  validReportDate,
+  weekStartForDate,
 } from "@/lib/project-reports";
 
 export async function POST(
@@ -29,6 +31,7 @@ export async function POST(
   const {
     projectid,
     reportweek,
+    reportdate,
     filename,
     filesize,
     storagepath,
@@ -37,9 +40,6 @@ export async function POST(
 
   if (
     !projectid ||
-    !validReportWeek(
-      reportweek,
-    ) ||
     typeof filename !==
       "string" ||
     !filename
@@ -131,6 +131,11 @@ export async function POST(
       assignment.assignmentrole,
     );
 
+  if (reporttype === "Project Manager" ? !validReportWeek(reportweek) : !validReportDate(reportdate) || reportweek !== weekStartForDate(reportdate)) {
+    await admin.storage.from(REPORT_BUCKET).remove([storagepath]);
+    return NextResponse.json({ error: "Invalid reporting week or daily report date." }, { status: 400 });
+  }
+
   let progress:
     | number
     | null = null;
@@ -173,6 +178,7 @@ export async function POST(
     .insert({
       projectid,
       reportweek,
+      reportdate: reporttype === "Project Manager" ? null : reportdate,
       reporttype,
       filename,
       filesize,
@@ -220,7 +226,7 @@ export async function POST(
         reporttype ===
         "Project Manager"
           ? "Project Manager Progress Report uploaded and sent to MD Office for review."
-          : "Operations Report uploaded and sent to the Project Manager for review.",
+          : "Daily Operations Report uploaded and sent to the Project Manager for review.",
     },
     { status: 201 },
   );
