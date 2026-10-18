@@ -1,6 +1,10 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaff } from "@/lib/viewer";
+
+const CATEGORY_COLUMNS =
+  "categoryid,categoryname,isinhouse,availableforall,active";
 
 export async function GET() {
   await requireStaff();
@@ -9,17 +13,13 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("transactioncategories")
-    .select(
-      "categoryid,categoryname,isinhouse,active",
-    )
+    .select(CATEGORY_COLUMNS)
     .eq("active", true)
     .order("categoryname");
 
   if (error) {
     return NextResponse.json(
-      {
-        error: error.message,
-      },
+      { error: error.message },
       { status: 400 },
     );
   }
@@ -42,19 +42,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
 
   const categoryname = String(
     body.categoryname ?? "",
   ).trim();
 
-  const isinhouse = Boolean(body.isinhouse);
+  const isinhouse = body.isinhouse === true;
+  const availableforall = body.availableforall === true;
 
   if (!categoryname) {
     return NextResponse.json(
-      {
-        error: "Category name is required.",
-      },
+      { error: "Category name is required." },
       { status: 400 },
     );
   }
@@ -66,11 +74,10 @@ export async function POST(request: Request) {
     .insert({
       categoryname,
       isinhouse,
+      availableforall,
       createdbyuserid: viewer.userId,
     })
-    .select(
-      "categoryid,categoryname,isinhouse,active",
-    )
+    .select(CATEGORY_COLUMNS)
     .single();
 
   if (error) {
@@ -80,17 +87,13 @@ export async function POST(request: Request) {
         : error.message;
 
     return NextResponse.json(
-      {
-        error: message,
-      },
+      { error: message },
       { status: 400 },
     );
   }
 
   return NextResponse.json(
-    {
-      category: data,
-    },
+    { category: data },
     { status: 201 },
   );
 }
@@ -108,14 +111,22 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
   const categoryid = body.categoryid;
 
   if (!categoryid) {
     return NextResponse.json(
-      {
-        error: "categoryid is required.",
-      },
+      { error: "categoryid is required." },
       { status: 400 },
     );
   }
@@ -124,21 +135,15 @@ export async function PATCH(request: Request) {
 
   const { error } = await supabase
     .from("transactioncategories")
-    .update({
-      active: false,
-    })
+    .update({ active: false })
     .eq("categoryid", categoryid);
 
   if (error) {
     return NextResponse.json(
-      {
-        error: error.message,
-      },
+      { error: error.message },
       { status: 400 },
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-  });
+  return NextResponse.json({ ok: true });
 }
