@@ -17,6 +17,13 @@ type Project = {
   } | null;
 };
 
+type ReportPdf = {
+  pdfid: number;
+  filename: string;
+  filesize: number;
+  uploadedat: string;
+};
+
 type ReportMedia = {
   mediaid: number;
   filename: string;
@@ -81,7 +88,10 @@ type Report = {
   } | null;
   projectreportmedia?:
     ReportMedia[] | null;
+  projectreportpdfs?: ReportPdf[] | null;
 };
+
+const MAX_PDFS_PER_REPORT = 8;
 
 const MAX_FILE_SIZE =
   100 * 1024 * 1024;
@@ -444,6 +454,7 @@ export default function ReportWorkspace({
   ] = useState<
     File[]
   >([]);
+  const [supportingPdfs, setSupportingPdfs] = useState<File[]>([]);
 
   const [
     progressPct,
@@ -857,6 +868,18 @@ export default function ReportWorkspace({
       return;
     }
 
+    if (supportingPdfs.length > MAX_PDFS_PER_REPORT - 1) {
+      setMessage("Select up to 7 supporting PDFs (8 PDFs total).");
+      return;
+    }
+    for (const pdf of supportingPdfs) {
+      if (!pdf.name.toLowerCase().endsWith(".pdf") || pdf.type !== "application/pdf" ||
+          pdf.size < 1 || pdf.size > MAX_FILE_SIZE) {
+        setMessage(`${pdf.name}: supporting PDFs must be 100 MB or smaller.`);
+        return;
+      }
+    }
+
     if (
       selectedIsManager
     ) {
@@ -1008,6 +1031,41 @@ export default function ReportWorkspace({
       reportSaved =
         true;
 
+      let pdfsUploaded = 0;
+      for (const pdf of supportingPdfs) {
+        const pdfRequest = {
+          reportid: completeBody.reportid,
+          filename: pdf.name,
+          filesize: pdf.size,
+          mimetype: "application/pdf",
+        };
+        const signedPdfResponse = await fetch("/api/project-reports/pdfs/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pdfRequest),
+        });
+        const signedPdfBody = await signedPdfResponse.json();
+        if (!signedPdfResponse.ok) {
+          throw new Error(signedPdfBody.error ?? `Could not prepare ${pdf.name}`);
+        }
+        const { error: pdfUploadError } = await createClient().storage
+          .from("project-reports")
+          .uploadToSignedUrl(signedPdfBody.storagepath, signedPdfBody.token, pdf, {
+            contentType: "application/pdf",
+          });
+        if (pdfUploadError) throw new Error(`${pdf.name}: ${pdfUploadError.message}`);
+        const finishedPdfResponse = await fetch("/api/project-reports/pdfs/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...pdfRequest, storagepath: signedPdfBody.storagepath }),
+        });
+        const finishedPdfBody = await finishedPdfResponse.json();
+        if (!finishedPdfResponse.ok) {
+          throw new Error(finishedPdfBody.error ?? `Could not save ${pdf.name}`);
+        }
+        pdfsUploaded++;
+      }
+
       let mediaUploaded =
         0;
 
@@ -1124,6 +1182,7 @@ export default function ReportWorkspace({
       }
 
       setFile(null);
+      setSupportingPdfs([]);
       setMediaFiles([]);
       setProgressPct("");
 
@@ -1137,6 +1196,11 @@ export default function ReportWorkspace({
           "";
       }
 
+      const supportingInput = document.getElementById(
+        "project-report-supporting-pdfs",
+      ) as HTMLInputElement | null;
+      if (supportingInput) supportingInput.value = "";
+
       const mediaInput =
         document.getElementById(
           "project-report-media",
@@ -1148,7 +1212,7 @@ export default function ReportWorkspace({
       }
 
       setMessage(
-        `${completeBody.emailMessage}${
+        `${completeBody.emailMessage}${pdfsUploaded ? ` ${pdfsUploaded} supporting PDF(s) attached.` : ""}${
           mediaUploaded
             ? ` ${mediaUploaded} media file${
                 mediaUploaded ===
@@ -1170,7 +1234,7 @@ export default function ReportWorkspace({
 
       setMessage(
         reportSaved
-          ? `The report was saved, but a media upload did not complete: ${detail}`
+          ? `The primary report was saved, but a supporting PDF or media upload did not complete: ${detail}. Contact an administrator before approval if attachments are missing.`
           : detail,
       );
 
@@ -1385,7 +1449,7 @@ export default function ReportWorkspace({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            PDF maximum 100 MB. Supporting images: JPG/PNG/WebP up to 5 MB each. Videos: MP4/WebM up to 25 MB each. Maximum 6 media files and 50 MB combined per report.
+            Up to 8 PDFs per report (one primary and seven supporting), maximum 100 MB each. Supporting images: JPG/PNG/WebP up to 5 MB each. Videos: MP4/WebM up to 25 MB each. Maximum 6 media files and 50 MB combined per report.
           </p>
 
           <p className="mt-1 text-sm text-slate-500">
@@ -1513,7 +1577,7 @@ export default function ReportWorkspace({
 
             <label>
               <span className="field-label">
-                PDF file
+                Primary PDF file
               </span>
 
               <input
@@ -1533,6 +1597,35 @@ export default function ReportWorkspace({
                 }
                 required
               />
+            </label>
+
+            <label>
+              <span className="field-label">Supporting PDFs (optional, up to 7)</span>
+              <input
+                id="project-report-supporting-pdfs"
+                className="field-input pt-2"
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                onChange={(event) => {
+                  const selected = Array.from(event.currentTarget.files ?? []);
+                  if (selected.length > MAX_PDFS_PER_REPORT - 1 ||
+                      selected.some((pdf) => !pdf.name.toLowerCase().endsWith(".pdf") ||
+                        pdf.type !== "application/pdf" || pdf.size < 1 || pdf.size > MAX_FILE_SIZE)) {
+                    setMessage("Choose up to 7 supporting PDFs, each no larger than 100 MB.");
+                    setSupportingPdfs([]);
+                    event.currentTarget.value = "";
+                    return;
+                  }
+                  setSupportingPdfs(selected);
+                  setMessage(null);
+                }}
+              />
+              {supportingPdfs.length > 0 && (
+                <span className="mt-1 block text-xs text-slate-500">
+                  {supportingPdfs.length} supporting PDF(s) selected
+                </span>
+              )}
             </label>
 
             <label>
@@ -1926,6 +2019,8 @@ export default function ReportWorkspace({
                         report.projectreportmedia ??
                         [];
 
+                      const pdfs = report.projectreportpdfs ?? [];
+
                       return (
                         <div
                           key={
@@ -1982,6 +2077,25 @@ export default function ReportWorkspace({
                               View / download PDF
                             </a>
                           </div>
+
+                          {pdfs.length > 0 && (
+                            <div className="mt-4 rounded-md border border-slate-200 p-4">
+                              <p className="font-medium">Supporting PDFs ({pdfs.length})</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {pdfs.map((pdf) => (
+                                  <a
+                                    key={pdf.pdfid}
+                                    href={`/api/project-reports/pdfs/${pdf.pdfid}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-navy hover:bg-slate-50"
+                                  >
+                                    PDF: {pdf.filename} · {sizeLabel(Number(pdf.filesize))}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="mt-4 grid gap-3 rounded-md bg-slate-50 p-4 text-sm md:grid-cols-4">
                             <div>

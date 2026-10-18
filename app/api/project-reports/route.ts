@@ -174,6 +174,12 @@ export async function GET() {
         authorizer:users!projectreports_authorizedbyuserid_fkey(
           fullname
         ),
+        projectreportpdfs(
+          pdfid,
+          filename,
+          filesize,
+          uploadedat
+        ),
         projectreportmedia(
           mediaid,
           filename,
