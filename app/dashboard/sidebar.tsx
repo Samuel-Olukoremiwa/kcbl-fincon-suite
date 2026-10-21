@@ -11,6 +11,8 @@ import {
   Users,
   FileCheck2,
   Banknote,
+  ListPlus,
+  Wallet,
   FileText,
   Building2,
   BriefcaseBusiness,
@@ -137,6 +139,18 @@ export default function Sidebar({
           label: "Transactions",
           icon: Banknote,
           module: "transactions",
+        },
+        {
+          href: "/dashboard/variations",
+          label: "Variations",
+          icon: ListPlus,
+          module: "variations",
+        },
+        {
+          href: "/dashboard/in-house-accounts",
+          label: "In-House Accounts",
+          icon: Wallet,
+          module: "inhouse",
         },
         {
           href: "/dashboard/reports",

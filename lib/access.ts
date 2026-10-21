@@ -13,7 +13,9 @@ export type ModuleKey =
   | "settings"
   | "editRequests"
   | "reports"
-  | "assignments";
+  | "assignments"
+  | "variations"
+  | "inhouse";
 
 type Rule = {
   modules: ModuleKey[];
@@ -34,11 +36,17 @@ const allModules: ModuleKey[] = [
   "editRequests",
   "reports",
   "assignments",
+  "variations",
+  "inhouse",
 ];
 
 const departmentMatrix: Record<string, Rule> = {
   MD: {
     modules: [
+      "variations",
+      "inhouse",
+      "variations",
+      "inhouse",
       "dashboard",
       "clients",
       "projects",
@@ -54,6 +62,10 @@ const departmentMatrix: Record<string, Rule> = {
 
   "MD Office": {
     modules: [
+      "variations",
+      "inhouse",
+      "variations",
+      "inhouse",
       "users",
       "clients",
       "projects",
@@ -93,6 +105,10 @@ const departmentMatrix: Record<string, Rule> = {
 
   "Finance & Admin": {
     modules: [
+      "variations",
+      "inhouse",
+      "variations",
+      "inhouse",
       "suppliers",
       "subcontractors",
       "transactions",
@@ -100,6 +116,10 @@ const departmentMatrix: Record<string, Rule> = {
       "editRequests",
     ],
     write: [
+      "variations",
+      "inhouse",
+      "variations",
+      "inhouse",
       "suppliers",
       "subcontractors",
       "transactions",
@@ -138,6 +158,10 @@ const departmentMatrix: Record<string, Rule> = {
 
   "Audit/Internal Control": {
     modules: [
+      "variations",
+      "inhouse",
+      "variations",
+      "inhouse",
       "clients",
       "projects",
       "suppliers",
