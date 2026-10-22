@@ -59,12 +59,13 @@ export async function PATCH(
     return NextResponse.json(
       {
         error:
-          "A rejection reason is required.",
+          "Please enter the rejection reason and the corrections required.",
       },
       { status: 400 },
     );
   }
 
+  const safe = (value: string) => value.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   const admin =
     createAdminClient();
 
@@ -310,11 +311,11 @@ export async function PATCH(
           </p>
 
           <p>
-            <strong>Reason for rejection:</strong>
+            <strong>Reason for rejection and required corrections:</strong>
           </p>
 
           <div style="padding: 12px; background: #f8fafc; border-left: 4px solid #dc2626; margin: 12px 0;">
-            ${trimmedComments}
+            ${safe(trimmedComments)}
           </div>
 
           <p>

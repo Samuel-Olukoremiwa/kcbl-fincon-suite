@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendProjectReportEmail } from "@/lib/mailer";
 import {
   MAX_REPORT_BYTES,
   REPORT_BUCKET,
@@ -36,6 +37,7 @@ export async function POST(
     filesize,
     storagepath,
     progresspct,
+    supersedesreportid,
   } = await request.json();
 
   if (
@@ -136,6 +138,23 @@ export async function POST(
     return NextResponse.json({ error: "Invalid reporting week or daily report date." }, { status: 400 });
   }
 
+  let revisedReportId: number | null = null;
+  if (supersedesreportid !== null && supersedesreportid !== undefined) {
+    if (!Number.isSafeInteger(supersedesreportid) || supersedesreportid < 1) {
+      return NextResponse.json({error:"Invalid report to revise."},{status:400});
+    }
+    const {data: prior, error: priorError} = await admin.from("projectreports")
+      .select("reportid,projectid,reporttype,reportweek,reportdate,reviewstatus,uploadedbyuserid")
+      .eq("reportid",supersedesreportid).maybeSingle();
+    if (priorError || !prior || prior.reviewstatus !== "Rejected" ||
+        prior.projectid !== projectid || prior.reporttype !== reporttype ||
+        prior.uploadedbyuserid !== viewer.userId || prior.reportweek !== reportweek ||
+        (reporttype === "Operations" && prior.reportdate !== reportdate)) {
+      return NextResponse.json({error:"You may only revise your own rejected report for the same project and reporting period."},{status:403});
+    }
+    revisedReportId = prior.reportid;
+  }
+
   let progress:
     | number
     | null = null;
@@ -180,6 +199,7 @@ export async function POST(
       reportweek,
       reportdate: reporttype === "Project Manager" ? null : reportdate,
       reporttype,
+      supersedesreportid: revisedReportId,
       filename,
       filesize,
       storagepath,
@@ -213,8 +233,41 @@ export async function POST(
     );
   }
 
+  // Mail is best-effort: report submission must remain successful if mail fails.
+  let notificationSent = false;
+  let notificationError: string | undefined;
+  const [{ data: project }, { data: uploader }] = await Promise.all([
+    admin.from("projects").select("projecttitle").eq("projectid",projectid).maybeSingle(),
+    admin.from("users").select("fullname").eq("userid",viewer.userId).maybeSingle(),
+  ]);
+  let recipients: string[] = [];
+  if (reporttype === "Operations") {
+    const {data: managers} = await admin.from("projectassignments").select("userid")
+      .eq("projectid",projectid).eq("assignmentrole","Project Manager")
+      .eq("approvalstatus","Approved").eq("active",true);
+    const ids = [...new Set((managers ?? []).map((item) => item.userid))];
+    if(ids.length){const {data: people} = await admin.from("users").select("email").in("userid",ids);
+      recipients = (people ?? []).map((item)=>item.email).filter((email): email is string=>typeof email === "string" && email.includes("@"));}
+  } else {
+    const {data: people} = await admin.from("users").select("email").eq("department","MD Office").eq("status","Active");
+    recipients = (people ?? []).map((item)=>item.email).filter((email): email is string=>typeof email === "string" && email.includes("@"));
+  }
+  if (!recipients.length) notificationError = "No active reviewer email address found.";
+  else {
+    const label = reporttype === "Operations" ? `Daily report (${reportdate})` : `Weekly report (${reportweek})`;
+    const escape = (v: string) => v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const results = await Promise.all(recipients.map((to) => sendProjectReportEmail({
+      to, subject: `New ${label} awaiting review: ${project?.projecttitle ?? projectid}`,
+      html: `<p>A ${escape(label)} has been submitted for <strong>${escape(project?.projecttitle ?? projectid)}</strong> by ${escape(uploader?.fullname ?? "a team member")}.</p><p>Report #${report.reportid} is awaiting your review. Log in to the portal and open Project Reports.</p>`,
+    })));
+    notificationSent = results.every((r) => r.sent);
+    if (!notificationSent) notificationError = results.filter((r)=>!r.sent).map((r)=>r.error ?? "Email failed").join("; ");
+  }
+
   return NextResponse.json(
     {
+      notificationSent,
+      notificationError,
       ok: true,
       reportid:
         report.reportid,

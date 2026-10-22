@@ -443,6 +443,8 @@ export default function ReportWorkspace({
   );
 
   const [reportDate, setReportDate] = useState(localDateValue(new Date()));
+  const [revisionOf, setRevisionOf] = useState("");
+
 
   const [
     file,
@@ -832,6 +834,24 @@ export default function ReportWorkspace({
       filteredReports,
     ]);
 
+  const inboxReports = reports.filter((report) =>
+    report.reviewstatus === "Submitted" &&
+    ((canReview && report.reporttype === "Operations" &&
+      projectRoleById.get(report.projectid) === "Project Manager") ||
+     (canAuthorize && report.reporttype === "Project Manager"))
+  );
+  const reviewedInboxCount = reports.filter((report) =>
+    ((canReview && report.reporttype === "Operations" &&
+      projectRoleById.get(report.projectid) === "Project Manager" && report.reviewstatus === "Reviewed") ||
+     (canAuthorize && report.reporttype === "Project Manager" && report.reviewstatus === "Authorized"))
+  ).length;
+  const rejectedInboxCount = reports.filter((report) =>
+    report.reviewstatus === "Rejected" &&
+    ((canReview && report.reporttype === "Operations" &&
+      projectRoleById.get(report.projectid) === "Project Manager") ||
+     (canAuthorize && report.reporttype === "Project Manager"))
+  ).length;
+
   async function upload(
     event: React.FormEvent<HTMLFormElement>,
   ) {
@@ -1012,6 +1032,7 @@ export default function ReportWorkspace({
               JSON.stringify(
                 {
                   ...request,
+                  supersedesreportid: revisionOf ? Number(revisionOf) : null,
                   storagepath:
                     signedBody.storagepath,
                   progresspct:
@@ -1233,6 +1254,7 @@ export default function ReportWorkspace({
         }`,
       );
 
+      setRevisionOf("");
       await load();
     } catch (error) {
       const detail =
@@ -1272,7 +1294,7 @@ export default function ReportWorkspace({
       !comments.trim()
     ) {
       setMessage(
-        "Enter a reason for rejecting this Operations Report.",
+        "Enter why the report was rejected and exactly what must be corrected.",
       );
       return;
     }
@@ -1356,7 +1378,7 @@ export default function ReportWorkspace({
       !reason.trim()
     ) {
       setMessage(
-        "Enter a reason for rejecting this Project Manager Progress Report.",
+        "Enter why the report was rejected and exactly what must be corrected.",
       );
       return;
     }
@@ -1449,7 +1471,31 @@ export default function ReportWorkspace({
 
   return (
     <div className="mt-7 space-y-6">
+      {(canReview || canAuthorize) && (
+        <section className="card p-5" id="report-inbox">
+          <h2 className="text-lg font-semibold">{canAuthorize ? "MD Office — Report Inbox" : "Project Manager — Report Inbox"}</h2>
+          <p className="mt-1 text-sm text-slate-500">New submissions awaiting your review. Open a report below to review the attachments and approve or reject it.</p>
+          <div className="mt-4 flex flex-wrap gap-3 text-sm">
+            <span className="rounded bg-amber-50 px-3 py-2 text-amber-900">Pending: {inboxReports.length}</span>
+            <span className="rounded bg-green-50 px-3 py-2 text-green-900">Approved: {reviewedInboxCount}</span>
+            <span className="rounded bg-red-50 px-3 py-2 text-red-900">Rejected: {rejectedInboxCount}</span>
+          </div>
+          <div className="mt-4 divide-y">
+            {inboxReports.length === 0 ? <p className="py-3 text-sm text-slate-500">No pending reports.</p> : inboxReports.map((report) => (
+              <div key={report.reportid} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                <div><p className="font-semibold">{report.projects?.projecttitle ?? report.projectid}</p>
+                  <p className="text-slate-500">{report.users?.fullname ?? "Staff member"} · {report.reportdate ?? report.reportweek} · {report.filename}</p></div>
+                <button type="button" className="rounded bg-navy px-3 py-2 text-white"
+                  onClick={() => {setQuery(report.filename); setReviewStatusFilter("Submitted"); document.getElementById("report-list")?.scrollIntoView({behavior:"smooth"});}}>
+                  Open for review
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {canUpload && (
+
         <section className="card p-5 md:p-6">
           <h2 className="text-base font-semibold">
             {selectedIsManager
@@ -1467,6 +1513,18 @@ export default function ReportWorkspace({
               : "Operations Reports go to the approved Project Manager for review and do not update the client progress percentage."}
           </p>
 
+          {reports.some((report) => report.reviewstatus === "Rejected" && report.projectid === projectId) && (
+            <label className="mt-4 block">
+              <span className="field-label">Resubmit a rejected report (optional)</span>
+              <select className="field-input" value={revisionOf} onChange={(event) => setRevisionOf(event.target.value)}>
+                <option value="">New report (not a revision)</option>
+                {reports.filter((report) => report.reviewstatus === "Rejected" && report.projectid === projectId).map((report) => (
+                  <option key={report.reportid} value={report.reportid}>#{report.reportid} — {report.filename} ({report.reportdate ?? report.reportweek})</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">Upload corrected PDF(s). Previous rejected submissions and feedback stay in the record.</span>
+            </label>
+          )}
           <form
             className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5"
             onSubmit={upload}
@@ -1925,7 +1983,7 @@ export default function ReportWorkspace({
         </div>
       </section>
 
-      <section className="space-y-5">
+      <section className="space-y-5" id="report-list">
         {Object.entries(
           groupedReports,
         ).map(
