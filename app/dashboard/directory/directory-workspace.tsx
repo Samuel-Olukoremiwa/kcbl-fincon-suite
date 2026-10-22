@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { date, money } from "@/lib/client-utils";
+import type { VariationSummary } from "@/lib/variation-summary";
 
 type Item = any;
 
@@ -22,7 +23,9 @@ export default function DirectoryWorkspace({
   outflows,
   progress,
   canViewFinancial,
+  variations,
 }: {
+  variations: Record<string,VariationSummary>;
   clients: Item[];
   projects: Item[];
   managerNames: Record<string, string>;
@@ -311,6 +314,7 @@ export default function DirectoryWorkspace({
                               .projectid
                           ] ?? null
                         }
+                        variations={variations[project.projectid] ?? null}
                         canViewFinancial={
                           canViewFinancial
                         }
@@ -334,6 +338,7 @@ export default function DirectoryWorkspace({
 }
 
 function ProjectCard({
+  variations,
   project,
   managerName,
   inflow,
@@ -341,6 +346,7 @@ function ProjectCard({
   progress,
   canViewFinancial,
 }: {
+  variations: VariationSummary|null;
   project: Item;
   managerName: string;
   inflow: number;
@@ -371,9 +377,10 @@ function ProjectCard({
     inflowReceived -
     expenditure;
 
-  const expectedInflow =
-    projectValue -
-    inflowReceived;
+  const variationValue=variations?.value??0;
+  const variationReceived=variations?.received??0;
+  const expectedVariations=variations?.outstanding??0;
+  const expectedInflow = projectValue - inflowReceived + expectedVariations;
 
   return (
     <article className="p-5">
@@ -477,7 +484,7 @@ function ProjectCard({
               <Amount
                 label="Inflow received"
                 value={money(
-                  inflowReceived,
+                  inflowReceived + variationReceived,
                 )}
                 tone="text-green-700"
               />
@@ -503,6 +510,8 @@ function ProjectCard({
                 }
               />
 
+              <Amount label="Variations received" value={money(variationReceived)} tone="text-green-700" />
+              <Amount label="Expected variations" value={money(expectedVariations)} tone="text-navy" />
               <Amount
                 label="Expected inflow"
                 value={money(

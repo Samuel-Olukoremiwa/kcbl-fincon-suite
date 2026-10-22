@@ -5,6 +5,7 @@ import { getViewer } from "@/lib/viewer";
 import { createClient } from "@/lib/supabase/server";
 import { money, date } from "@/lib/client-utils";
 import { canAccess } from "@/lib/access";
+import { variationSummaries } from "@/lib/variation-summary";
 
 export default async function DashboardPage() {
   const viewer = await getViewer();
@@ -26,7 +27,9 @@ export default async function DashboardPage() {
   const isSuperUser = viewer.roleName === "Super User";
   const firstName = viewer.fullName.split(" ")[0];
   const activeProjects = (projects ?? []).filter(project => project.status !== "Completed");
-  const totalBudget = activeProjects.reduce((sum, project) => sum + Number(project.estimatedvalue), 0);
+  const variationMap = await variationSummaries();
+  const variationsValue = activeProjects.reduce((sum,p)=>sum+(variationMap[p.projectid]?.value??0),0);
+  const totalBudget = activeProjects.reduce((sum, project) => sum + Number(project.estimatedvalue), 0) + variationsValue;
   const approvedInflow = (inflows ?? []).filter(x => x.approvalstatus === "Approved").reduce((sum, x) => sum + Number(x.amount), 0);
   const approvedOutflow = (outflows ?? []).filter(x => x.approvalstatus === "Approved").reduce((sum, x) => sum + Number(x.amount), 0);
   const pending = [...(inflows ?? []), ...(outflows ?? [])].filter(x => x.approvalstatus === "Pending").length;
@@ -55,6 +58,7 @@ export default async function DashboardPage() {
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric icon={NairaIcon} label="Total active project value" value={money(totalBudget)} sub={<Link href="/dashboard/directory" className="font-medium text-navy hover:underline">{clients?.length ?? 0} client(s) · {activeProjects.length} active project(s)</Link>}/>
+          <Metric icon={ReceiptText} label="Variations value" value={money(variationsValue)} sub="Approved variations on active projects"/>
           <Metric icon={WalletCards} label="Approved cash inflow" value={money(approvedInflow)} sub="Posted client payments"/>
           <Metric icon={ReceiptText} label="Approved expenditure" value={money(approvedOutflow)} sub="Posted project spend"/>
           <Metric icon={Clock3} label="Current cash position" value={money(cashPosition)} sub={`${pending} pending approval(s)`} danger={cashPosition < 0}/>

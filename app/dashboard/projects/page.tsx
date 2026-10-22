@@ -6,6 +6,7 @@ import {
   canViewFinancialRecords,
 } from "@/lib/access";
 import ProjectWorkspace from "./project-workspace";
+import { variationSummaries } from "@/lib/variation-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -139,10 +140,12 @@ export default async function ProjectsPage() {
     ]),
   );
 
+  const variationMap = canViewFinancial ? await variationSummaries() : {};
   const projectRows = (projects ?? []).map(
     (project: any) => ({
       ...project,
 
+      variation: variationMap[project.projectid] ?? null,
       clientName:
         clientNames.get(project.clientid) ??
         "Unassigned",

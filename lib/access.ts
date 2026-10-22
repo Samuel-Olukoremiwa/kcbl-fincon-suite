@@ -197,6 +197,7 @@ const clientRule: Rule = {
   modules: [
     "dashboard",
     "reports",
+    "variations",
   ],
   write: [],
 };

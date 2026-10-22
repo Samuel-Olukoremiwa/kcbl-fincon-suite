@@ -1,6 +1,6 @@
 "use client";
 
-import {
+import React, {
   useMemo,
   useState,
 } from "react";
@@ -619,6 +619,7 @@ export default function ProjectWorkspace({
                               inflowReceived;
 
                             return (
+                              <React.Fragment key={project.projectid}>
                               <tr
                                 key={
                                   project.projectid
@@ -772,7 +773,7 @@ export default function ProjectWorkspace({
                                       )}
                                     </select>
                                   ) : (
-                                    <span className="rounded-full bg-navy-50 px-2 py-1 text-xs text-navy">
+                                    <span className={`rounded-full px-2 py-1 text-xs ${project.status === "Completed" || (project.expectedenddate && project.expectedenddate >= new Date().toISOString().slice(0,10)) ? "bg-green-100 text-green-700" : project.status === "Ongoing" ? "bg-red-100 text-red-700" : "bg-navy-50 text-navy"}`}>
                                       {
                                         project.status
                                       }
@@ -809,6 +810,19 @@ export default function ProjectWorkspace({
                                   </td>
                                 )}
                               </tr>
+                              {project.variation && <tr className="bg-blue-50/40 text-xs">
+                                <td className="px-4 py-3 font-semibold">VARIATIONS</td>
+                                <td className="px-4 py-3">{money(project.variation.value)}</td>
+                                <td className="px-4 py-3">{project.variation.progress === null ? "Not recorded" : `${project.variation.progress}%`}</td>
+                                <td className="px-4 py-3 text-green-700">{money(project.variation.received)}</td>
+                                <td className="px-4 py-3">{money(project.variation.expenditure)} <span className="text-slate-400">(linked only)</span></td>
+                                <td className="px-4 py-3">{money(project.variation.received - project.variation.expenditure)}</td>
+                                <td className="px-4 py-3">{money(project.variation.outstanding)}</td>
+                                <td className="px-4 py-3">{project.variation.startDate ?? "—"} to {project.variation.endDate ?? "—"}</td>
+                                <td className="px-4 py-3">{project.variation.status}</td>
+                                {canDelete && <td />}
+                              </tr>}
+                              </React.Fragment>
                             );
                           },
                         )}

@@ -19,15 +19,28 @@ export async function GET(request:Request){
  if(kind!=='variations' && kind!=='inhouse') return jsonError('Invalid module');
  if(!auth(viewer,kind)) return jsonError('Access denied',403);
  const db=createAdminClient();
- const projects=await db.from('projects').select('projectid,projecttitle').order('projecttitle');
+ let clientProjectIds:string[]|null=null;
+ if(viewer.userType==='Client'){
+   if(kind!=='variations')return jsonError('Access denied',403);
+   const linked=await db.from('clients').select('clientid').eq('linkeduserid',viewer.userId).maybeSingle();
+   if(linked.error || !linked.data)return NextResponse.json({projects:[],variations:[],payments:[],canMake:false,canApprove:false});
+   const owned=await db.from('projects').select('projectid').eq('clientid',linked.data.clientid);
+   if(owned.error)return jsonError('Could not load client projects',500);
+   clientProjectIds=(owned.data??[]).map(x=>x.projectid);
+   if(!clientProjectIds.length)return NextResponse.json({projects:[],variations:[],payments:[],canMake:false,canApprove:false});
+ }
+ let pq=db.from('projects').select('projectid,projecttitle').order('projecttitle');
+ if(clientProjectIds)pq=pq.in('projectid',clientProjectIds);
+ const projects=await pq;
  if(projects.error) return jsonError(projects.error.message,500);
  if(kind==='variations'){
   const [v,p]=await Promise.all([
-   db.from('kcbl_variations').select('*').order('createdat',{ascending:false}),
+   db.from('kcbl_variations').select('*').order('createdat',{ascending:false}).in('projectid',clientProjectIds??(projects.data??[]).map(p=>p.projectid)),
    db.from('kcbl_variation_payments').select('*').order('createdat',{ascending:false})
   ]);
   if(v.error||p.error) return jsonError(v.error?.message||p.error?.message||'Query error',500);
-  return NextResponse.json({projects:projects.data,variations:v.data,payments:p.data,canMake:maker(viewer),canApprove:checker(viewer)});
+  const safeIds=new Set((v.data??[]).map(row=>row.id));
+  return NextResponse.json({projects:projects.data,variations:v.data,payments:(p.data??[]).filter(row=>safeIds.has(row.variationid)),canMake:viewer.userType==='Client'?false:maker(viewer),canApprove:viewer.userType==='Client'?false:checker(viewer)});
  }
  const e=await db.from('kcbl_company_entries').select('*').order('entrydate',{ascending:false}).order('createdat',{ascending:false});
  if(e.error) return jsonError(e.error.message,500);
@@ -51,7 +64,7 @@ export async function POST(request:Request){
    if(!projectid)return jsonError('Project is required');
    const project=await db.from('projects').select('projectid').eq('projectid',projectid).maybeSingle();
    if(!project.data)return jsonError('Project not found');
-   const out=await db.from('kcbl_variations').insert({projectid,description,amount,createdbyuserid:viewer.userId}).select('id').single();
+   const out=await db.from('kcbl_variations').insert({projectid,description,amount,createdbyuserid:viewer.userId,startdate:body.startdate||null,enddate:body.enddate||null,progresspct:body.progresspct===undefined||body.progresspct===''?null:Number(body.progresspct),workstatus:String(body.workstatus||'Not started')}).select('id').single();
    return out.error?jsonError(out.error.message):NextResponse.json({ok:true,id:out.data.id});
   }
   if(!validDate(body.entrydate))return jsonError('Valid transaction date required');

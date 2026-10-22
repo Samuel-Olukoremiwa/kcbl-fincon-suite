@@ -1,0 +1,12 @@
+BEGIN;
+ALTER TABLE public.kcbl_variations ADD COLUMN IF NOT EXISTS startdate date;
+ALTER TABLE public.kcbl_variations ADD COLUMN IF NOT EXISTS enddate date;
+ALTER TABLE public.kcbl_variations ADD COLUMN IF NOT EXISTS progresspct numeric(5,2);
+ALTER TABLE public.kcbl_variations ADD COLUMN IF NOT EXISTS workstatus text NOT NULL DEFAULT 'Not started';
+ALTER TABLE public.kcbl_variations DROP CONSTRAINT IF EXISTS kcbl_var_date_order;
+ALTER TABLE public.kcbl_variations ADD CONSTRAINT kcbl_var_date_order CHECK (startdate IS NULL OR enddate IS NULL OR enddate >= startdate);
+ALTER TABLE public.kcbl_variations DROP CONSTRAINT IF EXISTS kcbl_var_progress_range;
+ALTER TABLE public.kcbl_variations ADD CONSTRAINT kcbl_var_progress_range CHECK (progresspct IS NULL OR progresspct BETWEEN 0 AND 100);
+ALTER TABLE public.cashoutflowexpenditure ADD COLUMN IF NOT EXISTS variationid uuid REFERENCES public.kcbl_variations(id);
+CREATE INDEX IF NOT EXISTS idx_project_outflow_variationid ON public.cashoutflowexpenditure(variationid) WHERE variationid IS NOT NULL;
+COMMIT;

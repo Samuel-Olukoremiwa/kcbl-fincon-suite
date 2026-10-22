@@ -2,6 +2,7 @@ import { ContactRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { requirePageAccess } from "@/lib/viewer";
 import { canViewFinancialRecords } from "@/lib/access";
+import { variationSummaries } from "@/lib/variation-summary";
 import DirectoryWorkspace from "./directory-workspace";
 
 export const dynamic = "force-dynamic";
@@ -87,6 +88,7 @@ export default async function DirectoryPage() {
         inflows={sums(inflows ?? [])}
         outflows={sums(outflows ?? [])}
         progress={progressByProject}
+        variations={canViewFinancial ? await variationSummaries() : {}}
         canViewFinancial={canViewFinancial}
       />
     </div>

@@ -71,6 +71,9 @@ export default function Sidebar({
   };
 
   const clientGroups: NavGroup[] = [
+    { label: "Variations", items: [
+      { href: "/dashboard/variations", label: "Variations Management", icon: ListPlus, module: "variations" },
+    ]},
     {
       label: "Overview",
       items: [
