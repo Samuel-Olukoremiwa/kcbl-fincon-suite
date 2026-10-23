@@ -480,51 +480,53 @@ function ProjectCard({
               Financial snapshot — approved only
             </p>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Amount
-                label="Inflow received"
-                value={money(
-                  inflowReceived + variationReceived,
-                )}
-                tone="text-green-700"
-              />
+            
+<div className="mt-3 grid grid-cols-2 gap-3">
+  <Amount
+    label="Inflow received"
+    value={money(inflowReceived + variationReceived)}
+    tone="text-green-700"
+  />
 
-              <Amount
-                label="Expenditure"
-                value={money(
-                  expenditure,
-                )}
-                tone="text-red-700"
-              />
+  <Amount
+    label="Expected inflow"
+    value={money(expectedInflow)}
+    tone={
+      expectedInflow < 0
+        ? "text-red-700"
+        : "text-navy"
+    }
+  />
 
-              <Amount
-                label="Cash position"
-                value={money(
-                  cashPosition,
-                )}
-                tone={
-                  cashPosition <
-                  0
-                    ? "text-red-700"
-                    : "text-navy"
-                }
-              />
+  <Amount
+    label="Variations received"
+    value={money(variationReceived)}
+    tone="text-green-700"
+  />
 
-              <Amount label="Variations received" value={money(variationReceived)} tone="text-green-700" />
-              <Amount label="Expected variations" value={money(expectedVariations)} tone="text-navy" />
-              <Amount
-                label="Expected inflow"
-                value={money(
-                  expectedInflow,
-                )}
-                tone={
-                  expectedInflow <
-                  0
-                    ? "text-red-700"
-                    : "text-navy"
-                }
-              />
-            </div>
+  <Amount
+    label="Expected variations"
+    value={money(expectedVariations)}
+    tone="text-navy"
+  />
+
+  <Amount
+    label="Expenditure"
+    value={money(expenditure)}
+    tone="text-red-700"
+  />
+
+  <Amount
+    label="Cash position"
+    value={money(cashPosition)}
+    tone={
+      cashPosition < 0
+        ? "text-red-700"
+        : "text-navy"
+    }
+  />
+</div>
+
           </div>
         )}
       </div>
