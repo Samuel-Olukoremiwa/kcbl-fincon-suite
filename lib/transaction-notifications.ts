@@ -92,10 +92,7 @@ async function sendEmail(
     });
 
     if (error) {
-      console.error(
-        "Transaction notification failed:",
-        error,
-      );
+      console.error("Transaction notification failed:", error);
     }
   } catch (error) {
     console.error(
@@ -225,58 +222,12 @@ export async function notifyTransactionSubmitted(
       return;
     }
 
+    // Intentionally excludes all transaction details.
     const html = `
       <p>
         A transaction has been submitted and is
         awaiting authorization.
       </p>
-
-      <table style="border-collapse:collapse;width:100%">
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            <strong>Type</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            ${escapeHtml(transaction.transactionType)}
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            <strong>Transaction ID</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            ${escapeHtml(transaction.transactionId)}
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            <strong>Amount</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            ${escapeHtml(naira(transaction.amount))}
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            <strong>Description</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            ${escapeHtml(transaction.description || "—")}
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:8px">
-            <strong>Project ID</strong>
-          </td>
-          <td style="padding:8px">
-            ${escapeHtml(transaction.projectId || "—")}
-          </td>
-        </tr>
-      </table>
 
       <p>
         Please sign in to review the transaction
@@ -367,34 +318,42 @@ export async function notifyTransactionDecision(
 
       ${decisionText}
 
-      <table style="border-collapse:collapse;width:100%">
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            <strong>Type</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            ${escapeHtml(transaction.transactionType)}
-          </td>
-        </tr>
+      ${
+        approved
+          ? `
+            <p><strong>Kindly follow up on Disbursement</strong></p>
+          `
+          : `
+            <table style="border-collapse:collapse;width:100%">
+              <tr>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0">
+                  <strong>Type</strong>
+                </td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0">
+                  ${escapeHtml(transaction.transactionType)}
+                </td>
+              </tr>
 
-        <tr>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            <strong>Transaction ID</strong>
-          </td>
-          <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-            ${escapeHtml(transaction.transactionId)}
-          </td>
-        </tr>
+              <tr>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0">
+                  <strong>Transaction ID</strong>
+                </td>
+                <td style="padding:8px;border-bottom:1px solid #e2e8f0">
+                  ${escapeHtml(transaction.transactionId)}
+                </td>
+              </tr>
 
-        <tr>
-          <td style="padding:8px">
-            <strong>Amount</strong>
-          </td>
-          <td style="padding:8px">
-            ${escapeHtml(naira(transaction.amount))}
-          </td>
-        </tr>
-      </table>
+              <tr>
+                <td style="padding:8px">
+                  <strong>Amount</strong>
+                </td>
+                <td style="padding:8px">
+                  ${escapeHtml(naira(transaction.amount))}
+                </td>
+              </tr>
+            </table>
+          `
+      }
     `;
 
     await sendEmail(recipient.email, subject, html);
