@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
+import ReportAttachmentViewer from "./report-attachment-viewer";
 
 type Project = {
   projectid: string;
@@ -408,6 +409,9 @@ export default function ReportWorkspace({
   ] = useState<
     Report[]
   >([]);
+  const [activeAttachment, setActiveAttachment] = useState<{
+    title: string; url: string; kind: "pdf" | "image" | "video";
+  } | null>(null);
 
   const [
     loading,
@@ -2138,12 +2142,10 @@ export default function ReportWorkspace({
                               </p>
                             </div>
 
-                            <a
-                              className="font-medium text-navy hover:underline"
-                              href={`/api/project-reports/download/${report.reportid}`}
-                            >
+                            <button type="button" className="font-medium text-navy hover:underline"
+                              onClick={() => setActiveAttachment({ title: report.filename, url: `/api/project-reports/download/${report.reportid}`, kind: "pdf" })}>
                               View / download PDF
-                            </a>
+                            </button>
                           </div>
 
                           {pdfs.length > 0 && (
@@ -2151,15 +2153,11 @@ export default function ReportWorkspace({
                               <p className="font-medium">Supporting PDFs ({pdfs.length})</p>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {pdfs.map((pdf) => (
-                                  <a
-                                    key={pdf.pdfid}
-                                    href={`/api/project-reports/pdfs/${pdf.pdfid}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-navy hover:bg-slate-50"
-                                  >
+                                  <button type="button" key={pdf.pdfid}
+                                    onClick={() => setActiveAttachment({ title: pdf.filename, url: `/api/project-reports/pdfs/${pdf.pdfid}`, kind: "pdf" })}
+                                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-navy hover:bg-slate-50">
                                     PDF: {pdf.filename} · {sizeLabel(Number(pdf.filesize))}
-                                  </a>
+                                  </button>
                                 ))}
                               </div>
                             </div>
@@ -2308,29 +2306,11 @@ export default function ReportWorkspace({
                                   (
                                     item,
                                   ) => (
-                                    <a
-                                      key={
-                                        item.mediaid
-                                      }
-                                      href={`/api/project-reports/media/${item.mediaid}`}
-                                      className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-navy hover:bg-slate-50"
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      {
-                                        item.mediatype
-                                      }
-                                      :{" "}
-                                      {
-                                        item.filename
-                                      }{" "}
-                                      ·{" "}
-                                      {sizeLabel(
-                                        Number(
-                                          item.filesize,
-                                        ),
-                                      )}
-                                    </a>
+                                    <button type="button" key={item.mediaid}
+                                      onClick={() => setActiveAttachment({ title: item.filename, url: `/api/project-reports/media/${item.mediaid}`, kind: item.mediatype === "Video" ? "video" : "image" })}
+                                      className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-navy hover:bg-slate-50">
+                                      {item.mediatype}: {item.filename} · {sizeLabel(Number(item.filesize))}
+                                    </button>
                                   ),
                                 )}
                               </div>
@@ -2540,6 +2520,7 @@ export default function ReportWorkspace({
           </p>
         )}
       </section>
+      <ReportAttachmentViewer attachment={activeAttachment} onClose={() => setActiveAttachment(null)} />
     </div>
   );
 }
