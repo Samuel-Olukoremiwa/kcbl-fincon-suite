@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiWriteAccess } from "@/lib/viewer";
 import { nextPrefixedId } from "@/lib/client-utils";
+import { notifyTransactionSubmitted } from "@/lib/transaction-notifications";
 
 const ALLOW_UNASSIGNED_PAYEES =
   process.env.NEXT_PUBLIC_ALLOW_UNASSIGNED_EXPENSE_PAYEES ===
@@ -470,6 +471,15 @@ export async function POST(request: Request) {
       auditError,
     );
   }
+
+  await notifyTransactionSubmitted({
+    transactionType: "Cash Outflow",
+    transactionId: id,
+    makerUserId: viewer.userId,
+    amount,
+    description,
+    projectId: projectid || null,
+  });
 
   return NextResponse.json(
     {
