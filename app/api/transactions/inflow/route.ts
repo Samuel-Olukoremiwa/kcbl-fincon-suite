@@ -1,7 +1,9 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireApiWriteAccess } from "@/lib/viewer";
 import { nextPrefixedId } from "@/lib/client-utils";
+import { notifyTransactionSubmitted } from "@/lib/transaction-notifications";
 
 const VALID_SOURCES = [
   "Client",
@@ -369,6 +371,15 @@ export async function POST(
       auditError,
     );
   }
+
+  await notifyTransactionSubmitted({
+    transactionType: "Cash Inflow",
+    transactionId: id,
+    makerUserId: viewer.userId,
+    amount,
+    description,
+    projectId: projectid || null,
+  });
 
   return NextResponse.json(
     {

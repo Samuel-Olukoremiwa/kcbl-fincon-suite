@@ -1,6 +1,8 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireStaff } from "@/lib/viewer";
+import { notifyTransactionDecision } from "@/lib/transaction-notifications";
 
 const TRANSACTION_TABLES = [
   "cashinflowreceivables",
@@ -148,8 +150,7 @@ export async function POST(request: Request) {
 
   if (
     override &&
-    table !==
-      "cashoutflowexpenditure"
+    table !== "cashoutflowexpenditure"
   ) {
     return NextResponse.json(
       {
@@ -183,10 +184,7 @@ export async function POST(request: Request) {
     .select(
       "transactionid,transactiondate,projectid,amount,makeruserid,approvalstatus",
     )
-    .eq(
-      "transactionid",
-      transactionid,
-    )
+    .eq("transactionid", transactionid)
     .single();
 
   if (
@@ -195,16 +193,14 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json(
       {
-        error:
-          "Transaction not found.",
+        error: "Transaction not found.",
       },
       { status: 404 },
     );
   }
 
   if (
-    transaction.approvalstatus !==
-    "Pending"
+    transaction.approvalstatus !== "Pending"
   ) {
     return NextResponse.json(
       {
@@ -221,8 +217,7 @@ export async function POST(request: Request) {
    * server, not only in the UI.
    */
   if (
-    transaction.makeruserid ===
-    viewer.userId
+    transaction.makeruserid === viewer.userId
   ) {
     return NextResponse.json(
       {
@@ -242,8 +237,7 @@ export async function POST(request: Request) {
    */
   if (
     status === "Approved" &&
-    table ===
-      "cashoutflowexpenditure" &&
+    table === "cashoutflowexpenditure" &&
     transaction.projectid
   ) {
     const {
@@ -252,10 +246,7 @@ export async function POST(request: Request) {
     } = await supabase
       .from("projects")
       .select("status")
-      .eq(
-        "projectid",
-        transaction.projectid,
-      )
+      .eq("projectid", transaction.projectid)
       .single();
 
     if (
@@ -305,54 +296,34 @@ export async function POST(request: Request) {
     const [
       { data: inflows },
       { data: outflows },
-    ] =
-      await Promise.all([
-        supabase
-          .from(
-            "cashinflowreceivables",
-          )
-          .select("amount")
-          .eq(
-            "projectid",
-            transaction.projectid,
-          )
-          .eq(
-            "approvalstatus",
-            "Approved",
-          ),
+    ] = await Promise.all([
+      supabase
+        .from("cashinflowreceivables")
+        .select("amount")
+        .eq("projectid", transaction.projectid)
+        .eq("approvalstatus", "Approved"),
 
-        supabase
-          .from(
-            "cashoutflowexpenditure",
-          )
-          .select("amount")
-          .eq(
-            "projectid",
-            transaction.projectid,
-          )
-          .eq(
-            "approvalstatus",
-            "Approved",
-          ),
-      ]);
+      supabase
+        .from("cashoutflowexpenditure")
+        .select("amount")
+        .eq("projectid", transaction.projectid)
+        .eq("approvalstatus", "Approved"),
+    ]);
 
     const approvedInflows =
       (inflows ?? []).reduce(
-        (sum, row) =>
-          sum + Number(row.amount),
+        (sum, row) => sum + Number(row.amount),
         0,
       );
 
     const approvedOutflows =
       (outflows ?? []).reduce(
-        (sum, row) =>
-          sum + Number(row.amount),
+        (sum, row) => sum + Number(row.amount),
         0,
       );
 
     const cashPosition =
-      approvedInflows -
-      approvedOutflows;
+      approvedInflows - approvedOutflows;
 
     /*
      * MD and Super User may approve an outflow
@@ -360,9 +331,7 @@ export async function POST(request: Request) {
      * position. Other authorizers cannot.
      */
     if (
-      Number(
-        transaction.amount,
-      ) > cashPosition &&
+      Number(transaction.amount) > cashPosition &&
       !(
         isSuperUser ||
         isMdAuthorizer
@@ -396,9 +365,7 @@ export async function POST(request: Request) {
   }
 
   const approvalDate =
-    new Date()
-      .toISOString()
-      .slice(0, 10);
+    new Date().toISOString().slice(0, 10);
 
   /*
    * Re-check Pending during the update itself.
@@ -412,33 +379,22 @@ export async function POST(request: Request) {
     .from(table)
     .update({
       approvalstatus: status,
-      checkeruserid:
-        viewer.userId,
-      approvaldate:
-        approvalDate,
+      checkeruserid: viewer.userId,
+      approvaldate: approvalDate,
       rejectionreason:
         status === "Rejected"
           ? reason
           : null,
     })
-    .eq(
-      "transactionid",
-      transactionid,
-    )
-    .eq(
-      "approvalstatus",
-      "Pending",
-    )
-    .select(
-      "transactionid",
-    )
+    .eq("transactionid", transactionid)
+    .eq("approvalstatus", "Pending")
+    .select("transactionid")
     .maybeSingle();
 
   if (updateError) {
     return NextResponse.json(
       {
-        error:
-          updateError.message,
+        error: updateError.message,
       },
       { status: 400 },
     );
@@ -455,43 +411,46 @@ export async function POST(request: Request) {
   }
 
   const transactionType =
-    table ===
-    "cashinflowreceivables"
+    table === "cashinflowreceivables"
       ? "Cash Inflow"
       : "Cash Outflow";
 
   const actionTime =
-    new Date()
-      .toTimeString()
-      .slice(0, 8);
+    new Date().toTimeString().slice(0, 8);
 
   /*
    * Normal approval/rejection audit record.
    */
   const {
     error: auditError,
-  } =
-    await supabase
-      .from(
-        "makercheckerauditlog",
-      )
-      .insert({
-        logid:
-          createLogId(),
-        transactiontype:
-          transactionType,
-        transactionid,
-        actiontype:
-          status,
-        actionbyuserid:
-          viewer.userId,
-        actiondate:
-          approvalDate,
-        actiontime:
-          actionTime,
-        comments:
-          reason || null,
-      });
+  } = await supabase
+    .from("makercheckerauditlog")
+    .insert({
+      logid: createLogId(),
+      transactiontype: transactionType,
+      transactionid,
+      actiontype: status,
+      actionbyuserid: viewer.userId,
+      actiondate: approvalDate,
+      actiontime: actionTime,
+      comments: reason || null,
+    });
+
+  /*
+   * Notify the original raiser after the status
+   * update succeeds. Email failure must not undo
+   * or reverse the authorization decision.
+   */
+  await notifyTransactionDecision({
+    transactionType,
+    transactionId: transaction.transactionid,
+    makerUserId: transaction.makeruserid,
+    amount: transaction.amount,
+    projectId: transaction.projectid,
+    description: null,
+    status,
+    reason: status === "Rejected" ? reason : null,
+  });
 
   if (auditError) {
     /*
@@ -504,8 +463,7 @@ export async function POST(request: Request) {
       ok: true,
       warning:
         "The transaction was processed, but the audit entry could not be written.",
-      auditError:
-        auditError.message,
+      auditError: auditError.message,
       transactionid,
       status,
     });
@@ -521,42 +479,29 @@ export async function POST(request: Request) {
     override
   ) {
     const {
-      error:
-        overrideAuditError,
-    } =
-      await supabase
-        .from(
-          "makercheckerauditlog",
-        )
-        .insert({
-          logid:
-            createLogId(),
-          transactiontype:
-            transactionType,
-          transactionid,
-          actiontype:
-            "Overridden",
-          actionbyuserid:
-            viewer.userId,
-          actiondate:
-            approvalDate,
-          actiontime:
-            new Date()
-              .toTimeString()
-              .slice(0, 8),
-          comments:
-            `Approved against a Pending project. Reason: ${overridereason}`,
-        });
+      error: overrideAuditError,
+    } = await supabase
+      .from("makercheckerauditlog")
+      .insert({
+        logid: createLogId(),
+        transactiontype: transactionType,
+        transactionid,
+        actiontype: "Overridden",
+        actionbyuserid: viewer.userId,
+        actiondate: approvalDate,
+        actiontime: new Date()
+          .toTimeString()
+          .slice(0, 8),
+        comments:
+          `Approved against a Pending project. Reason: ${overridereason}`,
+      });
 
-    if (
-      overrideAuditError
-    ) {
+    if (overrideAuditError) {
       return NextResponse.json({
         ok: true,
         warning:
           "The transaction was approved, but the override audit entry could not be written.",
-        auditError:
-          overrideAuditError.message,
+        auditError: overrideAuditError.message,
         transactionid,
         status,
       });
