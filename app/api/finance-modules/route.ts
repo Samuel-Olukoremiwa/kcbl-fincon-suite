@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getViewer } from '@/lib/viewer';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { canAccess } from '@/lib/access';
+import { notifyTransactionSubmitted, notifyTransactionDecision, shortRef } from '@/lib/transaction-notifications';
 
 const jsonError = (message:string,status=400) => NextResponse.json({error:message},{status});
 const validAmount = (value:unknown) => {
@@ -65,7 +66,9 @@ export async function POST(request:Request){
    const project=await db.from('projects').select('projectid').eq('projectid',projectid).maybeSingle();
    if(!project.data)return jsonError('Project not found');
    const out=await db.from('kcbl_variations').insert({projectid,description,amount,createdbyuserid:viewer.userId,startdate:body.startdate||null,enddate:body.enddate||null,progresspct:body.progresspct===undefined||body.progresspct===''?null:Number(body.progresspct),workstatus:String(body.workstatus||'Not started')}).select('id').single();
-   return out.error?jsonError(out.error.message):NextResponse.json({ok:true,id:out.data.id});
+   if(out.error)return jsonError(out.error.message);
+   await notifyTransactionSubmitted({transactionType:'Variation',transactionId:shortRef('VAR',out.data.id),makerUserId:viewer.userId,amount,description,projectId:projectid});
+   return NextResponse.json({ok:true,id:out.data.id});
   }
   if(!validDate(body.entrydate))return jsonError('Valid transaction date required');
   if(String(body.entrydate)>new Date().toISOString().slice(0,10))return jsonError('Future transactions not allowed');
@@ -74,15 +77,21 @@ export async function POST(request:Request){
   if(projectid){const project=await db.from('projects').select('projectid').eq('projectid',projectid).maybeSingle();if(!project.data)return jsonError('Project not found')}
   const transferreference=String(body.transferreference||'').trim()||null;
   const out=await db.from('kcbl_company_entries').insert({entrydate:body.entrydate,direction,amount,category,description,projectid:projectid||null,transferreference,createdbyuserid:viewer.userId}).select('id').single();
-  return out.error?jsonError(out.error.message):NextResponse.json({ok:true,id:out.data.id});
+  if(out.error)return jsonError(out.error.message);
+  await notifyTransactionSubmitted({transactionType:direction==='Inflow'?'In-House Inflow':'In-House Outflow',transactionId:shortRef('IH',out.data.id),makerUserId:viewer.userId,amount,description,projectId:projectid||null});
+  return NextResponse.json({ok:true,id:out.data.id});
  }
  if(action==='decide-payment' && kind==='variations'){
   if(!checker(viewer)) return jsonError('Only checkers may approve payments',403);
   const id=String(body.id||''); const decision=String(body.decision||''); const reason=String(body.reason||'').trim();
   if(!['Approved','Rejected'].includes(decision))return jsonError('Invalid decision');
   if(decision==='Rejected'&&!reason)return jsonError('Rejection reason required');
+  const pay=await db.from('kcbl_variation_payments').select('createdbyuserid,amount').eq('id',id).maybeSingle();
+  if(!pay.data)return jsonError('Payment not found',404);
   const res=await db.rpc('kcbl_decide_variation_payment',{p_id:id,p_decision:decision,p_reason:reason,p_userid:viewer.userId});
-  return res.error?jsonError(res.error.message):NextResponse.json({ok:true});
+  if(res.error)return jsonError(res.error.message);
+  await notifyTransactionDecision({transactionType:'Variation Payment',transactionId:shortRef('VPAY',id),makerUserId:pay.data.createdbyuserid,amount:pay.data.amount,status:decision as 'Approved'|'Rejected',reason:decision==='Rejected'?reason:null});
+  return NextResponse.json({ok:true});
  }
  if(action==='decide'){
   if(!checker(viewer))return jsonError('Only authorized checkers may approve',403);
@@ -90,17 +99,23 @@ export async function POST(request:Request){
   if(!['Approved','Rejected'].includes(decision))return jsonError('Invalid decision');
   if(decision==='Rejected'&&!reason)return jsonError('A rejection reason is required');
   const table=kind==='variations'?'kcbl_variations':'kcbl_company_entries';
-  const item=await db.from(table).select('createdbyuserid,approvalstatus').eq('id',id).maybeSingle();
+  const item=await db.from(table).select(kind==='inhouse'?'createdbyuserid,approvalstatus,amount,projectid,direction':'createdbyuserid,approvalstatus,amount,projectid').eq('id',id).maybeSingle();
   if(!item.data)return jsonError('Record not found',404);
-  if(item.data.approvalstatus!=='Pending')return jsonError('Record has already been reviewed',409);
-  if(item.data.createdbyuserid===viewer.userId)return jsonError('You cannot approve your own entry',403);
+  const record=item.data as unknown as {createdbyuserid:string;approvalstatus:string;amount:number|string;projectid:string|null;direction?:string};
+  if(record.approvalstatus!=='Pending')return jsonError('Record has already been reviewed',409);
+  if(record.createdbyuserid===viewer.userId)return jsonError('You cannot approve your own entry',403);
+  const status=decision as 'Approved'|'Rejected';
   if(kind==='inhouse'){
    const res=await db.rpc('kcbl_decide_company_entry',{p_id:id,p_decision:decision,p_reason:reason,p_userid:viewer.userId});
-   return res.error?jsonError(res.error.message):NextResponse.json({ok:true});
+   if(res.error)return jsonError(res.error.message);
+   await notifyTransactionDecision({transactionType:record.direction==='Inflow'?'In-House Inflow':'In-House Outflow',transactionId:shortRef('IH',id),makerUserId:record.createdbyuserid,amount:record.amount,projectId:record.projectid,status,reason:status==='Rejected'?reason:null});
+   return NextResponse.json({ok:true});
   }
   const out=await db.from(table).update({approvalstatus:decision,approvedbyuserid:viewer.userId,approvedat:new Date().toISOString(),rejectionreason:decision==='Rejected'?reason:null}).eq('id',id).eq('approvalstatus','Pending').select('id').maybeSingle();
   if(out.error)return jsonError(out.error.message);
-  return out.data?NextResponse.json({ok:true}):jsonError('Record already processed',409);
+  if(!out.data)return jsonError('Record already processed',409);
+  await notifyTransactionDecision({transactionType:'Variation',transactionId:shortRef('VAR',id),makerUserId:record.createdbyuserid,amount:record.amount,projectId:record.projectid,status,reason:status==='Rejected'?reason:null});
+  return NextResponse.json({ok:true});
  }
  if(action==='payment'&&kind==='variations'){
   if(!maker(viewer))return jsonError('Only Finance Initiators or Super User may log variation payments',403);
@@ -108,7 +123,9 @@ export async function POST(request:Request){
   if(amount===null||!validDate(body.paymentdate))return jsonError('Valid amount and payment date required');
   if(String(body.paymentdate)>new Date().toISOString().slice(0,10))return jsonError('Future payment dates not allowed');
   const res=await db.rpc('kcbl_submit_variation_payment',{p_variationid:body.variationid,p_date:body.paymentdate,p_amount:amount,p_reference:String(body.reference||'').trim()||null,p_notes:String(body.notes||'').trim()||null,p_userid:viewer.userId});
-  return res.error?jsonError(res.error.message):NextResponse.json({ok:true,id:res.data});
+  if(res.error)return jsonError(res.error.message);
+  await notifyTransactionSubmitted({transactionType:'Variation Payment',transactionId:shortRef('VPAY',String(res.data)),makerUserId:viewer.userId,amount,description:String(body.notes||'').trim()||null});
+  return NextResponse.json({ok:true,id:res.data});
  }
  return jsonError('Invalid action');
 }

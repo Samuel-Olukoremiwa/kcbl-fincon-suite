@@ -4,8 +4,43 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const LOGIN_URL = "https://kcblfincon.com/login";
 
-type TransactionType = "Cash Inflow" | "Cash Outflow";
+export type TransactionType =
+  | "Cash Inflow"
+  | "Cash Outflow"
+  | "Variation"
+  | "Variation Payment"
+  | "In-House Inflow"
+  | "In-House Outflow";
 type Decision = "Approved" | "Rejected";
+
+// Word used in the email body ("Your transaction has been approved").
+function itemNoun(type: TransactionType): string {
+  switch (type) {
+    case "Variation":
+      return "variation";
+    case "Variation Payment":
+      return "variation payment";
+    case "In-House Inflow":
+    case "In-House Outflow":
+      return "in-house entry";
+    default:
+      return "transaction";
+  }
+}
+
+// Only records that lead to money being paid out get the disbursement follow-up.
+function needsDisbursement(type: TransactionType): boolean {
+  return (
+    type === "Cash Inflow" ||
+    type === "Cash Outflow" ||
+    type === "In-House Outflow"
+  );
+}
+
+// Short readable reference for UUID-based records, e.g. VAR-1A2B3C4D.
+export function shortRef(prefix: string, id: string): string {
+  return `${prefix}-${String(id).replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
 
 type TransactionEmail = {
   transactionType: TransactionType;
@@ -222,15 +257,17 @@ export async function notifyTransactionSubmitted(
       return;
     }
 
+    const noun = itemNoun(transaction.transactionType);
+
     // Intentionally excludes all transaction details.
     const html = `
       <p>
-        A transaction has been submitted and is
+        A${noun.startsWith("i") ? "n" : ""} ${noun} has been submitted and is
         awaiting authorization.
       </p>
 
       <p>
-        Please sign in to review the transaction
+        Please sign in to review the ${noun}
         in accordance with your authorization
         permissions.
       </p>
@@ -273,14 +310,21 @@ export async function notifyTransactionDecision(
     }
 
     const approved = transaction.status === "Approved";
+    const noun = itemNoun(transaction.transactionType);
+    const disbursement = needsDisbursement(transaction.transactionType);
+    const label =
+      noun === "transaction"
+        ? "Transaction"
+        : transaction.transactionType;
 
     const subject = approved
-      ? `Transaction approved: ${transaction.transactionId}`
-      : `Transaction rejected: ${transaction.transactionId}`;
+      ? `${label} approved: ${transaction.transactionId}`
+      : `${label} rejected: ${transaction.transactionId}`;
 
     const decisionText = approved
-      ? `
-        <p>Your transaction has been <strong>approved</strong>.</p>
+      ? disbursement
+        ? `
+        <p>Your ${noun} has been <strong>approved</strong>.</p>
 
         <p>
           It is now ready for the separate
@@ -294,9 +338,12 @@ export async function notifyTransactionDecision(
           </strong>
         </p>
       `
+        : `
+        <p>Your ${noun} has been <strong>approved</strong>.</p>
+      `
       : `
         <p>
-          Your transaction has been
+          Your ${noun} has been
           <strong>rejected</strong> and requires
           correction before it can be resubmitted.
         </p>
@@ -320,9 +367,11 @@ export async function notifyTransactionDecision(
 
       ${
         approved
-          ? `
+          ? disbursement
+            ? `
             <p><strong>Kindly follow up on Disbursement</strong></p>
           `
+            : ""
           : `
             <table style="border-collapse:collapse;width:100%">
               <tr>
@@ -336,7 +385,7 @@ export async function notifyTransactionDecision(
 
               <tr>
                 <td style="padding:8px;border-bottom:1px solid #e2e8f0">
-                  <strong>Transaction ID</strong>
+                  <strong>${noun === "transaction" ? "Transaction ID" : "Reference"}</strong>
                 </td>
                 <td style="padding:8px;border-bottom:1px solid #e2e8f0">
                   ${escapeHtml(transaction.transactionId)}
